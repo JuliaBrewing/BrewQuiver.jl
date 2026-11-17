@@ -15,9 +15,9 @@ const LQ = typeof(1.0u"L")
 const CQ = typeof(1.0u"°C")
 const MinQ = typeof(1.0u"minute")
 
-const ETHANOL_DENSITY_20C = 0.78924u"kg/L"
-const CO2_PER_VOLS = 1.977u"g/L"         # mass of CO₂ in one volume per liter
-const ETHANOL_PER_CO2 = 46.068 / 44.0095 # mass of ethanol per mass of CO₂ in fermentation
+const ETHANOL_DENSITY_20C = 0.78924u"kg/L"   # CRC Handbook of Chemistry and Physics
+const CO2_PER_VOLS = 1.977u"g/L"         # density of CO₂ at 0 °C and 1 atm (as in UnitfulBrewing)
+const ETHANOL_PER_CO2 = 46.068 / 44.0095 # equimolar ethanol and CO₂ in alcoholic fermentation
 
 """
     Liquor(; water = 0u"kg", extract = 0u"kg", alcohol = 0u"kg", isoalpha = 0u"mg",
@@ -123,7 +123,11 @@ end
 
 # Balling: original, real and apparent extracts in °P, as plain numbers.
 # With E and A the mass percentages of extract and alcohol,
-# OE = 100 (E + 2.0665 A) / (100 + 1.0665 A), which in masses reads as below.
+# OE = 100 (E + 2.0665 A) / (100 + 1.0665 A), which in masses reads as below; it is
+# equivalent to `abw` in BrewingFormulas, ABW = (OE - RE) / (2.0665 - 0.010665 OE), and the
+# apparent extract follows from RE = 0.1808 OE + 0.8192 AE.
+# References: J. De Clerck, A Textbook of Brewing, Chapman & Hall, 1958, after C. J. N.
+# Balling; M. L. Hall, "Brew By the Numbers", Zymurgy, Summer 1995, pp. 54–61 (Eqs. 11, 16).
 function _extracts(l::Liquor)
     m = ustrip(u"kg", mass(l))
     m == 0 && return (0.0, 0.0, 0.0)

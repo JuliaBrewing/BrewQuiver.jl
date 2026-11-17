@@ -56,6 +56,10 @@ Hop(name::AbstractString; alpha, form::Symbol = :pellet) = Hop(name, _fraction(a
 
 Utilization factors of the hop forms, relative to leaf hops: pellets and powders are taken
 to give 10% more bitterness. It can be modified to change the defaults.
+
+The 10% for pellets is a homebrewing convention, not part of Tinseth's or Rager's models.
+The Python BrewQuiver divided Tinseth's utilization by 0.9 and used the factors 1 for
+pellets and 0.9 for leaf hops, i.e. pellets about 11% above leaf hops.
 """
 const HOP_FORM_FACTORS = Dict{Symbol, Float64}(
     :leaf => 1.0, :plug => 1.0, :pellet => 1.1, :powder => 1.1, :extract => 1.1)

@@ -204,7 +204,7 @@ end
 Ferments whatever arrives at `:in` with the `culture`, down to the given apparent
 `attenuation` of its original extract, at `temperature`. By Balling, each 2.0665 g of
 extract give 1 g of ethanol, 0.9565 g of CO₂ and 0.11 g of yeast; the CO₂ escapes except
-for the residual CO₂ at `temperature`. The volume `loss` (yeast cake, trub) goes to the
+for the residual CO₂ at `temperature` (see `residual_co2`). The volume `loss` (yeast cake, trub) goes to the
 port `:loss`, the rest to `:out`.
 """
 struct Ferment <: AbstractProcess
@@ -222,6 +222,10 @@ function Ferment(; culture::Culture, attenuation = culture.attenuation, temperat
 end
 
 outports(::Ferment) = (:out, :loss)
+
+# References for the fermentation: J. De Clerck, A Textbook of Brewing, Chapman & Hall,
+# 1958, after C. J. N. Balling; J. Šavel et al., "Interpolation formulas for Balling's
+# alcohol factors", Kvasny prumysl 66 (2020) 239–244, doi:10.18832/kp2019.66.239.
 
 function process(f::Ferment, inputs, models)
     eq = models.gravity
@@ -246,7 +250,8 @@ end
 
 Carbonates whatever arrives at `:in` to `carbonation`: by priming with `sugar` (an
 `AbstractPrimingSugar` of BrewingFormulas), which also adds a little alcohol, or by forced
-carbonation when `sugar = nothing`.
+carbonation when `sugar = nothing`. The priming fermentation produces equal numbers of
+moles of ethanol and CO₂.
 """
 struct Package{S <: Union{Nothing, AbstractPrimingSugar}} <: AbstractProcess
     carbonation::typeof(1.0u"vols")

@@ -32,6 +32,13 @@ BrewingFormulas.jl for the formulas.
 - **Models** (hop utilization, color, ABV, gravity conversion) come from BrewingFormulas and
   are chosen per brew: `brew(q; models = (bitterness = Rager(),))`.
 
+## References
+
+The formulas are those of BrewingFormulas, whose `REFERENCES.md` lists their sources. The
+mass balance of fermentation and the original extract of fermented liquors follow Balling's
+relations (J. De Clerck, *A Textbook of Brewing*, 1958; M. L. Hall, "Brew By the Numbers",
+*Zymurgy*, Summer 1995; J. Šavel et al., *Kvasny prumysl* 66 (2020) 239–244).
+
 ## Example
 
 ```julia
