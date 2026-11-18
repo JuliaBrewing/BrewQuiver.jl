@@ -7,7 +7,7 @@
 A transfer of liquor from the output port `from` of a process to the input port `to` of
 another. The `amount` is a volume (at 20 °C), a fraction of the liquor at the port, or
 `nothing` for all that is left at the port after the other transfers (shared equally among
-the transfers with `nothing`). The times `out_time` and `in_time` at which the liquor leaves
+the transfers with `nothing`). From an empty port, every transfer takes an empty liquor. The times `out_time` and `in_time` at which the liquor leaves
 and arrives are relative to the processes (not yet used in the calculations).
 """
 struct Transfer
@@ -41,10 +41,15 @@ Build it with [`add!`](@ref) and [`connect!`](@ref), replace a process with
 """
 struct Quiver{G}
     graph::G
+    # the rank of each process in the order of construction, for a stable topological order
+    # (the codes of the vertices change when a vertex is removed, so they can't be used)
+    rank::Dict{Symbol, Int}
+    added::Base.RefValue{Int}
 end
 
 Quiver() = Quiver(MetaGraph(DiGraph(); label_type = Symbol, vertex_data_type = AbstractProcess,
-                            edge_data_type = Vector{Transfer}, graph_data = nothing))
+                            edge_data_type = Vector{Transfer}, graph_data = nothing),
+                  Dict{Symbol, Int}(), Ref(0))
 
 Base.haskey(q::Quiver, label::Symbol) = haskey(q.graph, label)
 Base.getindex(q::Quiver, label::Symbol) = q.graph[label]
@@ -52,6 +57,8 @@ Base.getindex(q::Quiver, label::Symbol) = q.graph[label]
 function Base.setindex!(q::Quiver, p::AbstractProcess, label::Symbol)
     if haskey(q, label)
         _check_ports(q, label, p)
+    else
+        q.rank[label] = (q.added[] += 1)
     end
     q.graph[label] = p
     return q
@@ -66,11 +73,12 @@ function nodes(q::Quiver)
     # Kahn's algorithm, taking the earliest added process among the ready ones, so that the
     # order is stable and follows the order of construction where the graph allows
     g = q.graph.graph
+    rank(v) = q.rank[label_for(q.graph, v)]
     indeg = [length(Graphs.inneighbors(g, v)) for v in Graphs.vertices(g)]
     ready = [v for v in Graphs.vertices(g) if indeg[v] == 0]
     order = Int[]
     while !isempty(ready)
-        v = popfirst!(sort!(ready))
+        v = popfirst!(sort!(ready; by = rank))
         push!(order, v)
         for w in Graphs.outneighbors(g, v)
             indeg[w] -= 1
@@ -94,7 +102,7 @@ Adds the process `p` to `q` with the given `label`.
 """
 function add!(q::Quiver, label::Symbol, p::AbstractProcess)
     haskey(q, label) && throw(ArgumentError("there is already a process labelled :$label"))
-    q.graph[label] = p
+    q[label] = p
     return q
 end
 
@@ -173,7 +181,10 @@ end
 Removes the process `label` and its transfers.
 """
 function remove!(q::Quiver, label::Symbol)
-    haskey(q, label) && rem_vertex!(q.graph, code_for(q.graph, label))
+    if haskey(q, label)
+        rem_vertex!(q.graph, code_for(q.graph, label))
+        delete!(q.rank, label)
+    end
     return q
 end
 

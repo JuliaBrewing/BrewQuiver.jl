@@ -55,14 +55,43 @@ end
 
 Updates `res` after a change of the process `label` of `q` or of the transfers leaving it,
 recomputing only `label` and the processes downstream of it.
+
+Other changes of the structure of `q` since `res` was computed are detected and recomputed
+too: the processes added, the sources and destinations of the transfers removed (by
+[`disconnect!`](@ref) or [`remove!`](@ref)), and the sources of new transfers. Changes of the amounts of existing
+transfers are not detected, so give the label of their source.
 """
 function rebrew!(res::BrewResult, q::Quiver, label::Symbol)
+    haskey(q, label) || throw(ArgumentError("there is no process labelled :$label"))
+    changed = Set([label])
+    # processes removed from the quiver
+    for n in collect(keys(res.nodes))
+        haskey(q, n) || delete!(res.nodes, n)
+    end
+    # transfers removed: drop their flows and recompute their sources (what is left at a
+    # port changes) and destinations
+    for (s, d) in collect(keys(res.flows))
+        if !(haskey(q, s) && haskey(q, d) && haskey(q.graph, s, d))
+            delete!(res.flows, (s, d))
+            haskey(q, s) && push!(changed, s)
+            haskey(q, d) && push!(changed, d)
+        end
+    end
     order = nodes(q)
-    Set(order) == Set(res.order) || throw(ArgumentError(
-        "the processes of the quiver changed since the brew; brew it again"))
+    for n in order
+        # processes added
+        haskey(res.nodes, n) || push!(changed, n)
+        # transfers added: recompute their sources
+        for d in outneighbor_labels(q.graph, n)
+            f = get(res.flows, (n, d), nothing)
+            (f === nothing || length(f) != length(q.graph[n, d])) && push!(changed, n)
+        end
+    end
+    resize!(res.order, length(order))
     copyto!(res.order, order)
-    for n in descendants(q, label)
-        _brew_node!(res, q, n)
+    stale = union((Set(descendants(q, n)) for n in changed)...)
+    for n in order
+        n in stale && _brew_node!(res, q, n)
     end
     return res
 end
@@ -98,8 +127,9 @@ function _distribute!(res, q, label, outputs)
         explicit = 0.0
         for (d, i, t) in mine
             t.amount === nothing && continue
+            # (from an empty port, every transfer takes an empty liquor)
             f = t.amount isa Real ? t.amount :
-                (iszero(v) ? 1.0 : float(uconvert(NoUnits, t.amount / v)))
+                (iszero(v) ? 0.0 : float(uconvert(NoUnits, t.amount / v)))
             fractions[(d, i)] = f
             explicit += f
         end

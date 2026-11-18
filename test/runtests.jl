@@ -165,6 +165,29 @@ end
     @test isempty(r3[:w].leftovers)
     disconnect!(q3, :w => :c)
     @test volume(brew(q3)[:w].leftovers[:out]) ≈ 5u"L"
+
+    # transfers of volumes from an empty port take empty liquors
+    q4 = Quiver()
+    add!(q4, :w, Source(zero(Liquor)))
+    add!(q4, :a, Mix()); add!(q4, :b, Mix())
+    connect!(q4, :w => :a; amount = 1u"L")
+    connect!(q4, :w => :b; amount = 1u"L")
+    r4 = brew(q4)
+    @test iszero(r4[:a, :out]) && iszero(r4[:b, :out])
+
+    # the order of construction is kept after removing a process
+    q5 = Quiver()
+    add!(q5, :w, Source(water(10u"L")))
+    for n in (:b, :c, :d, :e)
+        add!(q5, n, Mix())
+        connect!(q5, :w => n; amount = 0.25)
+    end
+    remove!(q5, :b)
+    @test nodes(q5) == [:w, :c, :d, :e]
+    add!(q5, :b, Mix())
+    @test nodes(q5) == [:w, :c, :d, :e, :b]
+    q5[:c] = Mix()                                  # replacing keeps the place
+    @test nodes(q5) == [:w, :c, :d, :e, :b]
 end
 
 @testset "Rebrew" begin
@@ -177,6 +200,62 @@ end
         @test res[n, p] ≈ l
     end
     @test apparent_attenuation(res[:fermentor, :out]) ≈ 80u"percent"
+
+    # changes of the structure: a rebrew must match a fresh brew
+    function same(res, q)
+        fresh = brew(q)
+        Set(keys(res.nodes)) == Set(keys(fresh.nodes)) || return false
+        Set(keys(res.flows)) == Set(keys(fresh.flows)) || return false
+        res.order == fresh.order || return false
+        all(res[n, p] ≈ l for n in nodes(q) for (p, l) in fresh[n].outputs) &&
+            all(res[n].leftovers == fresh[n].leftovers || keys(res[n].leftovers) ==
+                keys(fresh[n].leftovers) && all(res[n].leftovers[k] ≈ fresh[n].leftovers[k]
+                                                for k in keys(fresh[n].leftovers))
+                for n in nodes(q))
+    end
+    q = Quiver()
+    add!(q, :w, Source(water(10u"L")))
+    for n in (:a, :b, :c)
+        add!(q, n, Mix())
+    end
+    connect!(q, :w => :a; amount = 2u"L")
+    connect!(q, :w => :b; amount = 3u"L")
+    connect!(q, :w => :c)
+    add!(q, :blend, Mix())
+    connect!(q, :a => :blend); connect!(q, :c => :blend)
+    res = brew(q)
+    @test volume(res[:c, :out]) ≈ 5u"L"
+
+    # disconnecting: the destination is emptied, the source keeps a leftover
+    disconnect!(q, :w => :c)
+    rebrew!(res, q, :blend)                         # the change is found from the flows
+    @test iszero(res[:c, :out])
+    @test volume(res[:blend, :out]) ≈ 2u"L"
+    @test !haskey(res.flows, (:w, :c))
+    @test same(res, q)
+
+    # connecting from a process that did not change
+    connect!(q, :b => :blend)
+    rebrew!(res, q, :blend)
+    @test volume(res[:blend, :out]) ≈ 5u"L"
+    @test same(res, q)
+
+    # a new transfer along an existing edge
+    connect!(q, :w => :c; amount = 1u"L")
+    connect!(q, :w => :c)
+    rebrew!(res, q, :c)
+    @test volume(res[:c, :out]) ≈ 5u"L"
+    @test same(res, q)
+
+    # adding and removing processes
+    add!(q, :d, Mix())
+    connect!(q, :blend => :d; amount = 0.5)
+    remove!(q, :a)
+    rebrew!(res, q, :d)
+    @test !haskey(res.nodes, :a)
+    @test volume(res[:d, :out]) ≈ 5u"L"            # half of 3 L from :b and 7 L from :c
+    @test same(res, q)
+    @test_throws ArgumentError rebrew!(res, q, :a)
 end
 
 # Figure 1 of the BrewQuiver notes: the joint production of Fuller's Barley Wine, ESB,
