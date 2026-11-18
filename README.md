@@ -72,6 +72,35 @@ boil rate. With `BrewhouseEfficiency()`, the conversion of the mash is adjusted 
 efficiency of the recipe; with `NoCalibration()` (the default), the efficiency follows from
 the processes. See [`examples/beerjson_recipe.jl`](examples/beerjson_recipe.jl).
 
+## Water chemistry
+
+Liquors carry their dissolved `Minerals` (calcium, magnesium, sodium, chloride, sulfate and
+alkalinity), conserved like everything else: they mix, drain, and concentrate in the boil.
+Water has a `WaterProfile`; salts and acids are lots that dissolve where they are added; and
+`mash_ph` estimates the pH of the mash of a node before its mash rest, from the distilled
+water pH and buffering of its grains and Kolbach's residual alkalinity of its water (the
+formulas are in BrewingFormulas).
+
+```julia
+tap = WaterProfile(calcium = 30u"mg/L", magnesium = 8u"mg/L", sodium = 12u"mg/L",
+                   chloride = 25u"mg/L", sulfate = 30u"mg/L", bicarbonate = 120u"mg/L")
+add!(q, :strike_water, water(16u"L"; temperature = 75u"°C", profile = tap))
+add!(q, :gypsum, Salt(Gypsum()) => 4u"g")
+add!(q, :lactic, Acid(LacticAcid()) => 1u"mL")
+connect!(q, [:strike_water, :pale, :crystal, :gypsum, :lactic] => :mash)
+
+res = brew(q)
+profile(res[:wort])                 # the ions of the wort
+residual_alkalinity(res[:mash])     # mg/L as CaCO₃
+mash_ph(res[:mash])
+```
+
+Pale base malt is taken with a distilled water pH of 5.7 and a buffering of 40 mEq/(kg pH);
+crystal and roasted malts need their own distilled water pH (`Fermentable(...; di_ph =
+4.7)`), or the estimate warns. The BeerJSON importer reads the water additions of a recipe
+as the profile of its water, its "water agent" additions (gypsum, calcium chloride, lactic
+acid, ...) as salts and acids, and the distilled water pH of fermentable records.
+
 ## Ingredient library and inventory
 
 A `Library` holds ingredients by name, with what is in stock, loaded from the fermentable,

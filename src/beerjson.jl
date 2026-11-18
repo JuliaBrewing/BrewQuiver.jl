@@ -25,6 +25,8 @@ function _potential(g)
 end
 
 _moisture(x::BJ.FermentableType) = _q(x.moisture)
+_di_ph(x::BJ.FermentableType) = x.di_ph === nothing ? nothing : float(x.di_ph.value)
+_di_ph(::BJ.FermentableAdditionType) = nothing
 _moisture(::BJ.FermentableAdditionType) = nothing
 
 """
@@ -36,7 +38,8 @@ grind yield, or else the one given by its potential, both read on a dry basis. W
 `moisture` (in the record or as a keyword), grains are taken with 4% and the other
 fermentables with none, so that their yield applies to their mass as is.
 """
-function Fermentable(x::Union{BJ.FermentableAdditionType, BJ.FermentableType}; moisture = nothing)
+function Fermentable(x::Union{BJ.FermentableAdditionType, BJ.FermentableType}; moisture = nothing,
+                     di_ph = nothing)
     kind = FERMENTABLE_KINDS[x.type.value]
     y = x.yield
     yield, potential = if y.fine_grind !== nothing
@@ -47,7 +50,8 @@ function Fermentable(x::Union{BJ.FermentableAdditionType, BJ.FermentableType}; m
         throw(ArgumentError("the fermentable $(repr(x.name)) has no fine grind yield nor potential"))
     end
     m = something(moisture, _moisture(x), kind === :grain ? 4u"percent" : 0u"percent")
-    return Fermentable(x.name; kind, yield, potential, color = _q(x.color), moisture = m)
+    return Fermentable(x.name; kind, yield, potential, color = _q(x.color), moisture = m,
+                       di_ph = something(di_ph, _di_ph(x), Some(nothing)))
 end
 
 """
@@ -182,7 +186,8 @@ function _additions(r, boil_time, att, attenuation, library = nothing)
     use(t) = t === nothing || t.use === nothing ? nothing : stages[t.use.value]
     for a in r.ingredients.fermentable_additions
         known = _from(library, Fermentable, a.name)
-        f = Fermentable(a; moisture = known === nothing ? nothing : known.moisture)
+        f = Fermentable(a; moisture = known === nothing ? nothing : known.moisture,
+                        di_ph = known === nothing ? nothing : known.di_ph)
         a.amount isa BJ.MassType || throw(ArgumentError(
             "the fermentable $(repr(a.name)) is given by volume; give its mass"))
         stage = something(use(a.timing), soluble(f) ? :boil : :mash)
@@ -219,10 +224,28 @@ function _additions(r, boil_time, att, attenuation, library = nothing)
         stage = something(use(a.timing), :fermentation)
         push!(adds, (c, n, stage, _timing(a.timing, stage)))
     end
-    ignored = [string(length(x), " ", what) for (x, what) in
-               ((r.ingredients.miscellaneous_additions, "miscellaneous additions"),
-                (r.ingredients.water_additions, "water additions")) if x !== nothing && !isempty(x)]
-    isempty(ignored) || @info "$(repr(r.name)): ignoring $(join(ignored, " and "))"
+    # the water agents: salts and acids
+    others = 0
+    for a in something(r.ingredients.miscellaneous_additions, [])
+        i = a.type.value == "water agent" ? _water_agent(a.name) : nothing
+        if i === nothing
+            a.type.value == "water agent" && @warn "the water agent $(repr(a.name)) is not known: it is left out"
+            others += 1
+            continue
+        end
+        m = a.amount isa BJ.MassType ? _portion_amount(_q(a.amount)) :
+            a.amount isa BJ.VolumeType && i isa Acid ? uconvert(u"kg", _q(a.amount) * i.acid.density) :
+            nothing
+        if m === nothing
+            @warn "the water agent $(repr(a.name)) is not given by mass: it is left out"
+            continue
+        end
+        stage = something(use(a.timing), :mash)
+        step = a.timing === nothing ? nothing : a.timing.step
+        stage === :mash && step !== nothing && (stage = Symbol(:mash_step_, step))
+        push!(adds, (i, m, stage, nothing))
+    end
+    others > 0 && @info "$(repr(r.name)): ignoring $others miscellaneous additions"
     return adds
 end
 
@@ -319,6 +342,47 @@ function _boil_steps(r)
     return (stand, T, chill)
 end
 
+# the water profile of the water additions of a recipe (mixed by their amounts), or nothing
+function _water_profile(r)
+    ws = r.ingredients.water_additions
+    (ws === nothing || isempty(ws)) && return nothing
+    weights = [w.amount === nothing ? 1.0 : ustrip(u"L", _q(w.amount)) for w in ws]
+    any(w -> w.amount === nothing, ws) && (weights .= 1.0)
+    mean(f) = sum(wt * f(w) for (wt, w) in zip(weights, ws)) / sum(weights)
+    c(x) = x === nothing ? 0.0u"mg/L" : _mgL(_q(x))
+    return WaterProfile(; calcium = mean(w -> c(w.calcium)), magnesium = mean(w -> c(w.magnesium)),
+        sodium = mean(w -> c(w.sodium)), chloride = mean(w -> c(w.chloride)),
+        sulfate = mean(w -> c(w.sulfate)),
+        # (carbonate as the bicarbonate with the same alkalinity)
+        bicarbonate = mean(w -> c(w.bicarbonate) + 2 * 61.016 / 60.008 * c(w.carbonate)))
+end
+
+# the salt or acid of the name of a water agent, or nothing
+const _SALTS_BY_NAME = [
+    r"gypsum|calcium sulfate|caso4" => Gypsum, r"calcium chloride|cacl" => CalciumChloride,
+    r"epsom|magnesium sulfate|mgso4" => EpsomSalt, r"magnesium chloride|mgcl" => MagnesiumChloride,
+    r"baking soda|sodium bicarbonate|nahco3" => BakingSoda,
+    r"table salt|sodium chloride|canning salt|kosher salt|nacl" => TableSalt,
+    r"chalk|calcium carbonate|caco3" => Chalk,
+    r"slaked lime|pickling lime|calcium hydroxide|ca\(oh\)2" => SlakedLime]
+function _water_agent(name)
+    n = lowercase(name)
+    for (re, S) in _SALTS_BY_NAME
+        occursin(re, n) && return Salt(S(); name)
+    end
+    pct = match(r"(\d+(?:\.\d+)?)\s*%", n)
+    strength = pct === nothing ? nothing : parse(Float64, pct.captures[1]) * u"percent"
+    if occursin("lactic", n)
+        return Acid(strength === nothing ? LacticAcid() : LacticAcid(; strength); name)
+    elseif occursin("phosphoric", n)
+        # (densities between water and the 85% solution, 1.685 g/mL)
+        a = strength === nothing ? PhosphoricAcid() :
+            PhosphoricAcid(; strength, density = (1 + 0.685 * ustrip(u"percent", strength) / 85) * u"g/mL")
+        return Acid(a; name)
+    end
+    return nothing
+end
+
 """
     Quiver(recipe::RecipeType; equipment = nothing, calibration = NoCalibration(),
            mash_ratio = 3u"L/kg", attenuation = 75u"percent")
@@ -357,6 +421,13 @@ fermentation and the packaging, `time` counts forward from the start of the step
 A [`Library`](@ref) given as `library` completes the additions with its records of the same
 name: the moisture of fermentables, and the attenuation of cultures that have none (after
 the attenuation of the recipe's gravities).
+
+The water additions of the recipe give the [`WaterProfile`](@ref) of its water, and its
+miscellaneous additions of type "water agent" that name a brewing salt or acid (gypsum,
+calcium chloride, Epsom salt, baking soda, chalk, lactic or phosphoric acid, ...) become
+[`Salt`](@ref) and [`Acid`](@ref) lots, added to the mash, or to the sparge of the mash step
+they give; see [`mash_ph`](@ref). The distilled water pH of fermentables is taken from their
+records, or the `library`.
 
 Hops added to the mash are taken as first wort hops, boiling for the whole boil; hops
 added to the boil earlier than the boil starts (as in documents converted from BeerXML
@@ -432,23 +503,27 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     for i in order
         add!(q, lots[i], i => total[i])
     end
-    mashed = [a for a in adds if a[3] === :mash]
+    mashed = [a for a in adds if a[3] === :mash && a[1] isa Fermentable]
     grist = sum((a[2] for a in mashed if a[1] isa Fermentable && !soluble(a[1])); init = 0.0u"kg")
 
     # the stages
     stage_node = Dict(:boil => :kettle, :fermentation => :fermentor, :package => :packaging)
+    wp = _water_profile(r)
     rests, sparges = Any[], Any[]
     if !isempty(mashed)
         rests, sparges = _mash_steps(r, grist, mash_ratio, decoction_time)
         stage_node[:mash] = :mash
-        add!(q, :strike_water, water(rests[1].water; temperature = rests[1].water_temperature))
+        add!(q, :strike_water, water(rests[1].water; temperature = rests[1].water_temperature,
+                                     profile = wp))
         for (k, rest) in enumerate(rests)
             k > 1 && rest.water !== nothing &&
-                add!(q, Symbol(:infusion_, k), water(rest.water; temperature = rest.water_temperature))
+                add!(q, Symbol(:infusion_, k), water(rest.water; temperature = rest.water_temperature,
+                                                     profile = wp))
         end
         isempty(sparges) && push!(sparges, (nothing, 76u"°C"))
         for (k, s) in enumerate(sparges)
-            add!(q, Symbol(:sparge_water_, k), water(something(s[1], 0u"L"); temperature = s[2]))
+            add!(q, Symbol(:sparge_water_, k), water(something(s[1], 0u"L"); temperature = s[2],
+                                                     profile = wp))
         end
         add!(q, :mash; vessel = :mashtun)
         for (k, rest) in enumerate(rests)
@@ -458,8 +533,18 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
                 add!(q, Symbol(:decoction_, k), Symbol(:decoction_, k, :_boiled); vessel = :kettle)
         end
         add!(q, (Symbol(:grain_bed_, k) for k in eachindex(sparges))...; vessel = :mashtun)
+        # the water agents of a mash step: to the mash, or to the sparge of a sparge step
+        nsparge = 0
+        for (k, st) in enumerate(r.mash === nothing ? [] : r.mash.mash_steps)
+            if st.type.value == "sparge"
+                nsparge += 1
+                stage_node[Symbol(:mash_step_, k)] = Symbol(:grain_bed_, nsparge)
+            else
+                stage_node[Symbol(:mash_step_, k)] = :mash
+            end
+        end
     else
-        add!(q, :boil_water, water(pre_boil))
+        add!(q, :boil_water, water(pre_boil; profile = wp))
     end
     add!(q, :kettle, :wort, :chilled; vessel = :kettle)
     add!(q, :fermentor, :beer; vessel = :fermentor)
@@ -474,7 +559,9 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
             amount = length(as) == 1 ? nothing : m isa KgQ ? m : m / total[i]
             remaining = timing isa Remaining ? timing.time : nothing
             at = timing isa At ? timing.time : nothing
-            connect!(q, lots[i] => stage_node[stage], Transfer(amount; remaining, at))
+            node = get(stage_node, stage, nothing)
+            node === nothing && (i isa Union{Salt, Acid} || throw(KeyError(stage)))
+            connect!(q, lots[i] => something(node, :kettle), Transfer(amount; remaining, at))
         end
     end
 
@@ -553,7 +640,8 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
             moved |= abs(new - sparge) > 1e-6u"L"
             sparge = new
             for (k, s) in enumerate(sparges)
-                s[1] === nothing && (q[Symbol(:sparge_water_, k)] = water(sparge / free; temperature = s[2]))
+                s[1] === nothing && (q[Symbol(:sparge_water_, k)] = water(sparge / free; temperature = s[2],
+                                                                           profile = wp))
             end
         end
         if solve_loss

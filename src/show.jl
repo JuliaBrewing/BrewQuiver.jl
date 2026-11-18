@@ -31,6 +31,10 @@ function Base.show(io::IO, ::MIME"text/plain", l::Liquor)
     println(io, "  carbonation: ", _r(carbonation(l), 2), " vols")
     print(io, "  masses:      ", _r(l.water, 3), " kg water, ", _r(l.extract, 3), " kg extract, ",
           _r(l.alcohol, 3), " kg alcohol")
+    if !iszero(l.minerals)
+        print(io, "\n  water:       ", profile(l), "\n  residual alkalinity: ",
+              _r(residual_alkalinity(l)), " mg/L as CaCO₃")
+    end
 end
 
 # solids
@@ -53,6 +57,26 @@ Base.show(io::IO, f::Fermentable) = print(io, "Fermentable(", repr(f.name), ")")
 Base.show(io::IO, h::Hop) = print(io, "Hop(", repr(h.name), ")")
 Base.show(io::IO, c::Culture) = print(io, "Culture(", repr(c.name), ")")
 
+# minerals
+
+function _minerals(io::IO, m::Minerals)
+    parts = String[]
+    for (f, name) in ((:calcium, "Ca"), (:magnesium, "Mg"), (:sodium, "Na"), (:chloride, "Cl"),
+                      (:sulfate, "SO₄"))
+        x = getfield(m, f)
+        iszero(x) || push!(parts, string(_mass(uconvert(u"kg", x)), " ", name))
+    end
+    iszero(m.alkalinity) || push!(parts, string(_r(uconvert(u"g", m.alkalinity), 2), " g alkalinity as CaCO₃"))
+    print(io, join(parts, ", "))
+end
+
+Base.show(io::IO, p::WaterProfile) = print(io, "WaterProfile(",
+    join((string(n, " ", _r(getfield(p, f))) for (f, n) in ((:calcium, "Ca"), (:magnesium, "Mg"),
+          (:sodium, "Na"), (:chloride, "Cl"), (:sulfate, "SO₄"), (:bicarbonate, "HCO₃"))), ", "),
+    " mg/L)")
+Base.show(io::IO, s::Salt) = print(io, "Salt(", repr(s.name), ")")
+Base.show(io::IO, a::Acid) = print(io, "Acid(", repr(a.name), ")")
+
 # contents
 
 function _summary(io::IO, c::Contents; kwargs...)
@@ -60,8 +84,14 @@ function _summary(io::IO, c::Contents; kwargs...)
         print(io, "empty")
         return
     end
-    hasliquor = !iszero(mass(c.liquor))
+    # (a lot of salt or acid: its minerals, with at most a few grams of water)
+    lot = !iszero(c.liquor.minerals) && mass(c.liquor) < 0.01u"kg"
+    hasliquor = !lot && !iszero(mass(c.liquor))
     hasliquor && _summary(io, c.liquor; kwargs...)
+    if lot
+        _minerals(io, c.liquor.minerals)
+        hasliquor = true
+    end
     for (k, s) in enumerate(c.solids)
         print(io, k == 1 && !hasliquor ? "" : (k == 1 ? "; " : ", "), s)
     end

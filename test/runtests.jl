@@ -894,6 +894,65 @@ end
     @test occursin("amount of :pale", shown) && occursin("gravity(:fermentor)", shown)
 end
 
+@testset "Water chemistry" begin
+    p = WaterProfile(calcium = 50u"mg/L", magnesium = 10u"mg/L", sodium = 15u"mg/L",
+                     chloride = 40u"mg/L", sulfate = 60u"mg/L", bicarbonate = 150u"ppm")
+    @test p.bicarbonate ≈ 150u"mg/L"
+    @test_throws ArgumentError WaterProfile(calcium = 50)
+    w = water(16u"L"; profile = p)
+    @test profile(w).calcium ≈ 50u"mg/L" && profile(w).bicarbonate ≈ 150u"mg/L"
+    @test residual_alkalinity(w) ≈ residual_alkalinity(alkalinity(150u"mg/L"), 50u"mg/L", 10u"mg/L")
+    @test profile(water(10u"L")) == WaterProfile()
+    @test 0.25 * w + 0.75 * w ≈ w
+    @test profile(w + water(16u"L")).calcium ≈ 25u"mg/L" rtol = 1e-3      # diluted by half
+
+    # salts and acids are held dissolved, conserving their mass
+    gypsum = Contents(Salt(Gypsum()) => 5u"g")
+    @test total_mass(gypsum) ≈ 5u"g"
+    @test isempty(solids(gypsum))
+    @test profile(Contents(w) + gypsum).calcium ≈ 50u"mg/L" + ions(Gypsum(), 5u"g", 16u"L").calcium rtol = 1e-3
+    lactic = Contents(Acid(LacticAcid()) => 2u"mL")
+    @test total_mass(lactic) ≈ 2u"mL" * 1.21u"g/mL"
+    @test liquor(lactic).minerals.alkalinity ≈ -acid_milliequivalents(LacticAcid(), 2u"mL") * 50.043u"mg" rtol = 1e-4
+    @test residual_alkalinity(Contents(w) + lactic) < residual_alkalinity(w)
+    @test Salt(Gypsum()).name == "Gypsum" && Acid(LacticAcid()).name == "Lactic acid 88.0%"
+    @test sprint(show, gypsum) == "Contents(1.2 g Ca, 2.8 g SO₄)"
+
+    # the minerals go with the liquor: drained, concentrated by the boil, conserved
+    q = single_batch()
+    q[:strike_water] = water(16u"L"; temperature = 75u"°C", profile = p)
+    q[:sparge_water] = water(14u"L"; temperature = 80u"°C", profile = p)
+    add!(q, :gypsum, Salt(Gypsum()) => 5u"g")
+    add!(q, :lactic, Acid(LacticAcid()) => 1u"mL")
+    connect!(q, [:gypsum, :lactic] => :mash)
+    res = brew(q)
+    @test conserved(res, q)
+    @test profile(res[:wort]).calcium > profile(res[:kettle]).calcium            # evaporation
+    m(c) = liquor(c).minerals
+    total(f) = sum(f(m(c)) for c in values(leftovers(res)))
+    @test total(x -> x.calcium) ≈ 30u"L" * 50u"mg/L" + ions(Gypsum(), 5u"g", 1u"L").calcium * 1u"L"
+    @test total(x -> x.sulfate) ≈ 30u"L" * 60u"mg/L" + ions(Gypsum(), 5u"g", 1u"L").sulfate * 1u"L"
+
+    # the mash pH, before the mash rest
+    ph = @test_logs (:warn, r"Crystal 60") mash_ph(res[:mash])
+    grist = [(mass = 4.5u"kg", di_ph = nothing, buffering = nothing),
+             (mass = 0.3u"kg", di_ph = nothing, buffering = nothing)]
+    @test ph ≈ mash_ph(grist, volume(res[:mash]), residual_alkalinity(res[:mash]))
+    @test_throws ArgumentError mash_ph(res[:rested])                  # no grain left to mash
+    dark = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L", di_ph = 4.7, buffering = 60)
+    q[:crystal] = dark => 0.3u"kg"
+    res = brew(q)
+    ph2 = @test_logs mash_ph(res[:mash])                               # no warning
+    @test ph2 < ph
+    @test ph2 ≈ mash_ph([grist[1], (mass = 0.3u"kg", di_ph = 4.7, buffering = 60)],
+                        volume(res[:mash]), residual_alkalinity(res[:mash]))
+    # more acid lowers it, baking soda raises it
+    q[:lactic] = Acid(LacticAcid()) => 3u"mL"
+    @test mash_ph(brew(q)[:mash]) < ph2
+    q[:lactic] = Salt(BakingSoda()) => 3u"g"
+    @test mash_ph(brew(q)[:mash]) > ph2
+end
+
 @testset "Library and inventory" begin
     samples = joinpath(pkgdir(BeerJSON), "test", "samples")
     lib = Library((joinpath(samples, f) for f in ("real/FermentableRecord.json",
@@ -951,6 +1010,8 @@ end
     back = Library(path)
     @test keys(back) == keys(lib)
     @test back["Pale ale malt"] == pale && back["East Kent Goldings"] == goldings
+    push!(lib, Fermentable("Roast barley"; color = 500u"°L", di_ph = 4.6); stock = 1u"kg")
+    @test Library(write_beerjson(tempname() * ".json", lib))["Roast barley"].di_ph ≈ 4.6
     @test back["English ale"].attenuation ≈ ale.attenuation
     @test stock(back, "Pale ale malt") ≈ stock(lib, "Pale ale malt")
     @test stock(back, "English ale") === nothing                  # (a count: not written)

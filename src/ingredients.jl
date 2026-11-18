@@ -3,7 +3,8 @@
 """
     AbstractIngredient
 
-Supertype of the ingredients: [`Fermentable`](@ref), [`Hop`](@ref), [`Culture`](@ref).
+Supertype of the ingredients: [`Fermentable`](@ref), [`Hop`](@ref), [`Culture`](@ref),
+[`Salt`](@ref), [`Acid`](@ref).
 """
 abstract type AbstractIngredient end
 
@@ -11,13 +12,16 @@ _fraction(x::Real) = float(x)
 _fraction(x::Unitful.DimensionlessQuantity) = float(uconvert(NoUnits, x))
 
 """
-    Fermentable(name; kind = :grain, yield = 80u"percent", color = 2u"SRM", moisture = 4u"percent")
+    Fermentable(name; kind = :grain, yield = 80u"percent", color = 2u"SRM", moisture = 4u"percent",
+                di_ph = nothing, buffering = nothing)
     Fermentable(name; potential = 1.037u"sg", ...)
 
 A fermentable ingredient. `kind` is one of the BeerJSON types (`:grain`, `:extract`,
 `:dry_extract`, `:sugar`, `:fruit`, `:juice`, `:honey`, `:other`); `yield` is the extract
 yield relative to sucrose, on dry basis, or it is given by the `potential` (the specific
-gravity of 1 lb in 1 US gallon); `color` is in any color unit.
+gravity of 1 lb in 1 US gallon); `color` is in any color unit. For the mash pH (see
+[`mash_ph`](@ref)), `di_ph` is the pH of a mash of the grain in distilled water and
+`buffering` its buffering capacity, in mEq/(kg pH), when known.
 """
 struct Fermentable <: AbstractIngredient
     name::String
@@ -25,17 +29,22 @@ struct Fermentable <: AbstractIngredient
     yield::Float64
     color::typeof(1.0u"SRM")
     moisture::Float64
+    di_ph::Union{Nothing, Float64}
+    buffering::Union{Nothing, Float64}
 end
 
 function Fermentable(name::AbstractString; kind::Symbol = :grain, yield = nothing,
-                     potential = nothing, color = 2u"SRM", moisture = 4u"percent")
+                     potential = nothing, color = 2u"SRM", moisture = 4u"percent",
+                     di_ph = nothing, buffering = nothing)
     y = if potential !== nothing
         yield === nothing || throw(ArgumentError("give either yield or potential, not both"))
         _fraction(yield_from_potential(potential))
     else
         _fraction(something(yield, 0.8))
     end
-    return Fermentable(name, kind, y, uconvert(u"SRM", float(color)), _fraction(moisture))
+    return Fermentable(name, kind, y, uconvert(u"SRM", float(color)), _fraction(moisture),
+                       di_ph === nothing ? nothing : float(di_ph),
+                       buffering === nothing ? nothing : float(buffering))
 end
 
 # grains need a mash to give their extract; the other fermentables dissolve
@@ -85,3 +94,37 @@ struct Culture <: AbstractIngredient
 end
 Culture(name::AbstractString; attenuation = 75u"percent", kind::Symbol = :ale,
         form::Symbol = :liquid) = Culture(name, _fraction(attenuation), kind, form)
+
+"""
+    Salt(salt::AbstractSalt; name)
+
+A brewing salt (an `AbstractSalt` of BrewingFormulas: `Gypsum()`, `CalciumChloride()`,
+`EpsomSalt()`, ...). A lot of it, `Salt(Gypsum()) => 5u"g"`, holds its ions dissolved (see
+[`Minerals`](@ref)), so that they mix with the water it is added to.
+"""
+struct Salt{S <: AbstractSalt} <: AbstractIngredient
+    name::String
+    salt::S
+end
+const _SALT_NAMES = Dict(Gypsum => "Gypsum", CalciumChloride => "Calcium chloride",
+    EpsomSalt => "Epsom salt", MagnesiumChloride => "Magnesium chloride",
+    TableSalt => "Table salt", BakingSoda => "Baking soda", Chalk => "Chalk",
+    SlakedLime => "Slaked lime")
+Salt(s::AbstractSalt; name::AbstractString = get(_SALT_NAMES, typeof(s), string(nameof(typeof(s))))) =
+    Salt(String(name), s)
+
+"""
+    Acid(acid::AbstractAcid; name)
+
+An acid solution (an `AbstractAcid` of BrewingFormulas: `LacticAcid()`, `PhosphoricAcid()`).
+A lot of it, `Acid(LacticAcid()) => 2u"mL"` (or a mass), holds its acid dissolved, lowering
+the alkalinity of the water it is added to by its milliequivalents at pH 5.4.
+"""
+struct Acid{A <: AbstractAcid} <: AbstractIngredient
+    name::String
+    acid::A
+end
+Acid(a::LacticAcid; name::AbstractString = "Lactic acid $(round(100a.strength; digits = 1))%") =
+    Acid(String(name), a)
+Acid(a::PhosphoricAcid; name::AbstractString = "Phosphoric acid $(round(100a.strength; digits = 1))%") =
+    Acid(String(name), a)

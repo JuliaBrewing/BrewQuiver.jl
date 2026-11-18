@@ -245,7 +245,7 @@ function transform(b::Boil, c::Contents, models)
     # (never more than the water there is)
     evaporated = min(_kg(evaporated_volume(volume(before; eq), rate, b.time)), before.water)
     after = Liquor(before.water - evaporated, before.extract, before.alcohol, before.isoalpha,
-                   before.color, 0.0u"g", 100.0u"°C")
+                   before.color, 0.0u"g", 100.0u"°C", before.minerals)
     gavg = (gravity(before; eq) + gravity(after; eq)) / 2
     isoalpha = 0.0u"mg"
     rest = AbstractSolid[]
@@ -325,12 +325,12 @@ function transform(f::Ferment, c::Contents, models)
     produced = uconvert(u"g", 0.9565 / 2.0665 * Δe)
     grown = 0.11 / 2.0665 * Δe
     fermented = Liquor(l.water, l.extract - Δe, l.alcohol + Δe / 2.0665, l.isoalpha, l.color,
-                       0.0u"g", f.temperature)
+                       0.0u"g", f.temperature, l.minerals)
     residual = uconvert(u"g", ustrip(u"vols", residual_co2(f.temperature)) * CO2_PER_VOLS *
                               volume(fermented; eq))
     co2 = min(residual, l.co2 + produced)
     fermented = Liquor(fermented.water, fermented.extract, fermented.alcohol, fermented.isoalpha,
-                       fermented.color, co2, f.temperature)
+                       fermented.color, co2, f.temperature, fermented.minerals)
     rest = AbstractSolid[s isa Portion{Culture} ? YeastCake(solid_mass(s)) : s for s in c.solids]
     push!(rest, YeastCake(grown))
     return Contents(fermented, rest), _released(0.0u"kg", l.co2 + produced - co2)
@@ -358,7 +358,7 @@ function _prime(l::Liquor, s::KgQ, sugar)
     alcohol = uconvert(u"kg", ETHANOL_PER_CO2 * co2)
     water = s - alcohol - uconvert(u"kg", co2)
     return Liquor(l.water + water, l.extract, l.alcohol + alcohol, l.isoalpha, l.color,
-                  l.co2 + co2, l.temperature)
+                  l.co2 + co2, l.temperature, l.minerals)
 end
 
 function transform(p::Prime, c::Contents, models)
@@ -407,6 +407,7 @@ function transform(k::Carbonate, c::Contents, models)
     target = uconvert(u"g", ustrip(u"vols", k.carbonation) * CO2_PER_VOLS *
                             volume(l; eq = models.gravity))
     added = max(0.0u"g", target - l.co2)
-    l = Liquor(l.water, l.extract, l.alcohol, l.isoalpha, l.color, l.co2 + added, l.temperature)
+    l = Liquor(l.water, l.extract, l.alcohol, l.isoalpha, l.color, l.co2 + added, l.temperature,
+               l.minerals)
     return Contents(l, c.solids), _released(0.0u"kg", -added)
 end

@@ -30,6 +30,7 @@ module BrewQuiver
 
 using Unitful
 using Unitful: @u_str, dimension, unit
+using UnitfulBrewing: DensityConcentration
 using UnitfulBrewing
 using BrewingFormulas
 using BrewingFormulas: ABVModel, ColorModel, AbstractPrimingSugar, co2_yield, Tinseth, Rager
@@ -45,6 +46,7 @@ include("arrows.jl")
 include("vessels.jl")
 include("quiver.jl")
 include("brew.jl")
+include("water.jl")
 include("provenance.jl")
 include("beerjson.jl")
 include("export.jl")
@@ -55,10 +57,11 @@ include("show.jl")
 
 # liquors
 export Liquor, water, wort, mass, volume, gravity, original_gravity, carbonation
+export Minerals, WaterProfile, profile
 export with_temperature
 
 # ingredients
-export AbstractIngredient, Fermentable, Hop, Culture, HOP_FORM_FACTORS
+export AbstractIngredient, Fermentable, Hop, Culture, Salt, Acid, HOP_FORM_FACTORS
 
 # contents
 export Contents, liquor, solids, total_mass, grist
