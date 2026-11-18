@@ -39,7 +39,7 @@ _minutes(t) = uconvert(u"minute", float(t))
 
 How long the `arrow` takes: the `duration` of a transfer or a drain, the `time` of a
 transformation. A new arrow type with a duration implements this method; the default is
-no time.
+no time. See [`timeline`](@ref).
 """
 duration(::AbstractArrow) = 0.0u"minute"
 duration(t::AbstractTransformation) = hasfield(typeof(t), :time) ? _minutes(t.time) : 0.0u"minute"
@@ -57,7 +57,7 @@ arrows (shared equally among the transfers of the rest).
 
 The ingredients moved arrive with the timing `remaining` or `at` (see [`Remaining`](@ref),
 [`At`](@ref)), e.g. `Transfer(20u"g"; remaining = 10u"minute")` for a hop with 10 minutes
-of boil left. The transfer takes the time `duration` (see [`schedule`](@ref)).
+of boil left. The transfer takes the time `duration` (see [`timeline`](@ref)).
 """
 struct Transfer <: AbstractArrow
     amount::Union{Nothing, Float64, LQ, KgQ}
@@ -100,7 +100,7 @@ Moves the liquid of a node, leaving behind its solids, the liquid absorbed by th
 (`absorption` per mass of grain, see [`grist`](@ref)) and the volume `retain` (dead space,
 trub, yeast cake). It acts on what the transfers of amounts leave, before the transfers of
 the rest; a node has at most one drain. Draining takes the time `duration` (see
-[`schedule`](@ref)).
+[`timeline`](@ref)).
 """
 struct Drain <: AbstractArrow
     absorption::typeof(1.0u"L/kg")

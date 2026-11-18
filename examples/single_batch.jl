@@ -63,9 +63,9 @@ end
 println("Released: ", map(x -> round(u"kg", x; digits = 2), released(res)))
 println("Priming sugar for 2.4 vols: ", round(u"g", priming_mass(res[:beer => :bottling][1].moved, 2.4u"vols"); digits = 1))
 
-# the schedule of the brew, starting at 8:00: the stages of each vessel, and a chart of the
+# the timeline of the brew, starting at 8:00: the stages of each vessel, and a chart of the
 # brew day
 println()
-sched = schedule(q; start = 8u"hr")
-display(sched); println("\n")
-gantt(sched; to = 13u"hr")
+tl = timeline(q; start = 8u"hr")
+display(tl); println("\n")
+gantt(tl; to = 13u"hr")

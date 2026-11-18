@@ -616,10 +616,10 @@ end
     @test doc.beerjson.recipes[2].author == "BrewQuiver"
 end
 
-@testset "Schedule" begin
+@testset "Timeline" begin
     minute, hr, d = u"minute", u"hr", u"d"
     q = single_batch()
-    s = schedule(q)
+    s = timeline(q)
     @test s[:pale] == (arrive = 0.0minute, ready = 0.0minute, leave = 0.0minute)
     @test s[:mash].ready == 0minute && s[:mash].leave == 60minute         # the mash rest
     @test s[:rested].arrive == 60minute                                   # when the rest ends
@@ -631,14 +631,14 @@ end
     @test s[:bottles].ready == 120minute + 28d && s[:bottles].leave === nothing
     @test makespan(s) == 120minute + 28d
     @test isempty(overlaps(s))
-    @test schedule(q; start = 8hr)[:wort].ready == 10hr                  # a later start
+    @test timeline(q; start = 8hr)[:wort].ready == 10hr                  # a later start
 
     # draining and chilling take time: the sparge waits for the first runnings
     q[:rested => :kettle] = Drain(duration = 15minute)
     q[:grain_bed => :kettle] = Drain(duration = 20minute)
     q[:wort => :chilled] = Chill(temperature = 18u"°C", time = 25minute)
     q[:chilled => :fermentor] = Drain(retain = 1u"L", duration = 20minute)
-    s = schedule(q)
+    s = timeline(q)
     @test only(s[:rested => :grain_bed]).start == 75minute
     @test only(s[:sparge_water => :grain_bed]).start == 75minute
     @test s[:kettle].arrive == 60minute && s[:kettle].ready == 95minute
@@ -652,7 +652,7 @@ end
     add!(q, :cascade, Hop("Cascade"; alpha = 6u"percent") => 60u"g")
     connect!(q, :cascade => :fermentor, Transfer(30u"g"; remaining = 3d))
     connect!(q, :cascade => :fermentor, Transfer(30u"g"; at = 2d))
-    s = schedule(q)
+    s = timeline(q)
     @test [x.start for x in s[:cascade => :fermentor]] == [120minute + 11d, 120minute + 2d]
     @test s[:fermentor].ready == 120minute                     # timed additions do not wait
 
@@ -661,7 +661,7 @@ end
     for m in 1:2, i in 1:3
         q[Symbol(:bed, m, :_, i) => Symbol(:kettle, i)] = Drain(duration = (10 + 5m) * minute)
     end
-    s = schedule(q)
+    s = timeline(q)
     @test s[:kettle1].ready == 60minute + 20minute            # the slower drain of mash 2
     @test s[:kettle2].ready == 80minute + 20minute
     @test s[:wort1].ready == s[:kettle1].ready + 90minute
@@ -674,14 +674,14 @@ end
     add!(q, :k1, :b1; vessel = :kettle); add!(q, :k2, :b2; vessel = :kettle)
     connect!(q, :w1 => :k1); connect!(q, :w2 => :k2)
     connect!(q, :k1 => :b1, Boil()); connect!(q, :k2 => :b2, Boil())
-    s = schedule(q)
+    s = timeline(q)
     @test (:kettle, :k1, :k2) in overlaps(s)
     @test occursin("overlapping in a vessel", sprint(show, MIME"text/plain"(), s))
 
     # the display and the chart
-    s = schedule(single_batch())
+    s = timeline(single_batch())
     shown = sprint(show, MIME"text/plain"(), s)
-    @test occursin("Schedule over 28d 2:00", shown) && occursin("[kettle]", shown)
+    @test occursin("Timeline over 28d 2:00", shown) && occursin("[kettle]", shown)
     chart = sprint(io -> gantt(io, s; to = 3hr, width = 36))
     @test occursin("mashtun", chart) && occursin('█', chart)
     @test count('\n', chart) == 5

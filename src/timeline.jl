@@ -1,10 +1,10 @@
-# The schedule of a quiver: when each node is filled, ready and emptied, and when each arrow
+# The timeline of a quiver: when each node is filled, ready and emptied, and when each arrow
 # runs, from the durations of the arrows (see `duration`), for a time × vessel view.
 
 """
     Interval(start, stop)
 
-A time interval, in minutes from the start of the schedule.
+A time interval, in minutes from the start of the timeline.
 """
 struct Interval
     start::MinQ
@@ -12,15 +12,15 @@ struct Interval
 end
 
 """
-    Schedule
+    Timeline
 
-The result of [`schedule`](@ref): `s[label]` gives the times of a node, a NamedTuple
+The result of [`timeline`](@ref): `s[label]` gives the times of a node, a NamedTuple
 `(arrive, ready, leave)` (when its contents start arriving, when they are all in, and when
 they are all gone, `nothing` for the nodes nothing leaves), and `s[source => destination]`
 the [`Interval`](@ref)s of the arrows between two nodes, in their order. See also
 [`makespan`](@ref), [`overlaps`](@ref) and [`gantt`](@ref).
 """
-struct Schedule
+struct Timeline
     nodes::Dict{Symbol, @NamedTuple{arrive::MinQ, ready::MinQ, leave::Union{Nothing, MinQ}}}
     arrows::Dict{Tuple{Symbol, Symbol}, Vector{Interval}}
     order::Vector{Symbol}
@@ -28,17 +28,17 @@ struct Schedule
     sources::Set{Symbol}
 end
 
-Base.getindex(s::Schedule, label::Symbol) = s.nodes[label]
-Base.getindex(s::Schedule, e::Pair{Symbol, Symbol}) = s.arrows[(e.first, e.second)]
-Base.keys(s::Schedule) = s.order
+Base.getindex(s::Timeline, label::Symbol) = s.nodes[label]
+Base.getindex(s::Timeline, e::Pair{Symbol, Symbol}) = s.arrows[(e.first, e.second)]
+Base.keys(s::Timeline) = s.order
 
 _timed(a) = a isa Transfer && a.timing !== nothing
 _rest(a) = a isa Transfer && a.amount === nothing
 
 """
-    schedule(q::Quiver; start = 0u"minute") -> Schedule
+    timeline(q::Quiver; start = 0u"minute") -> Timeline
 
-The schedule of `q`: when the contents of each node arrive, are all in, and leave, and when
+The timeline of `q`: when the contents of each node arrive, are all in, and leave, and when
 each arrow runs, from the [`duration`](@ref)s of the arrows, as early as the arrows allow
 (the longest paths through the quiver).
 
@@ -53,7 +53,7 @@ each arrow runs, from the [`duration`](@ref)s of the arrows, as early as the arr
 
 Vessels are not checked for being free: see [`overlaps`](@ref).
 """
-function Base.schedule(q::Quiver; start = 0u"minute")
+function timeline(q::Quiver; start = 0u"minute")
     t0 = _minutes(start)
     iv = Dict{Tuple{Symbol, Symbol}, Vector{Union{Nothing, Interval}}}()
     for (s, d) in edge_labels(q.graph)
@@ -128,29 +128,29 @@ function Base.schedule(q::Quiver; start = 0u"minute")
     end
     arrows = Dict(k => Interval[something(x, Interval(ready[k[1]], ready[k[1]])) for x in v]
                   for (k, v) in iv)
-    return Schedule(times, arrows, order, Dict(n => vessel(q, n) for n in order), sources)
+    return Timeline(times, arrows, order, Dict(n => vessel(q, n) for n in order), sources)
 end
 
 """
-    makespan(s::Schedule)
+    makespan(s::Timeline)
 
-The time from the start of the schedule to the end of its last arrow, or to the arrival of
+The time from the start of the timeline to the end of its last arrow, or to the arrival of
 its last contents.
 """
-function makespan(s::Schedule)
+function makespan(s::Timeline)
     t0 = minimum(x.arrive for x in values(s.nodes))
     ends = [something(x.leave, x.ready) for x in values(s.nodes)]
     return maximum(ends) - t0
 end
 
 """
-    overlaps(s::Schedule)
+    overlaps(s::Timeline)
 
 The pairs of nodes in the same vessel whose times overlap, as a vector of
-`(vessel, node, node)`: a vessel scheduled for two contents at once, e.g. one kettle for two
+`(vessel, node, node)`: a vessel booked for two contents at once, e.g. one kettle for two
 boils that are not connected by arrows.
 """
-function overlaps(s::Schedule)
+function overlaps(s::Timeline)
     out = Tuple{Symbol, Symbol, Symbol}[]
     by = Dict{Symbol, Vector{Symbol}}()
     for n in s.order
@@ -177,13 +177,13 @@ function _clock(t)
 end
 
 """
-    gantt([io], s::Schedule; from = start, to = end, width = 60)
+    gantt([io], s::Timeline; from = start, to = end, width = 60)
 
-Prints the schedule as a chart, a row per vessel, between the times `from` and `to`: `█`
+Prints the timeline as a chart, a row per vessel, between the times `from` and `to`: `█`
 where a transformation runs in the vessel, `▒` where it holds contents otherwise.
 """
-gantt(s::Schedule; kwargs...) = gantt(stdout, s; kwargs...)
-function gantt(io::IO, s::Schedule; from = nothing, to = nothing, width::Integer = 60)
+gantt(s::Timeline; kwargs...) = gantt(stdout, s; kwargs...)
+function gantt(io::IO, s::Timeline; from = nothing, to = nothing, width::Integer = 60)
     t0 = from === nothing ? minimum(x.arrive for x in values(s.nodes)) : _minutes(from)
     t1 = to === nothing ? t0 + makespan(s) : _minutes(to)
     t1 > t0 || throw(ArgumentError("the chart needs `to` after `from`"))
@@ -223,8 +223,8 @@ function gantt(io::IO, s::Schedule; from = nothing, to = nothing, width::Integer
     end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::Schedule)
-    print(io, "Schedule over ", _clock(makespan(s)), "\n    ", rpad("", 15),
+function Base.show(io::IO, ::MIME"text/plain", s::Timeline)
+    print(io, "Timeline over ", _clock(makespan(s)), "\n    ", rpad("", 15),
           lpad("filled", 9), "   ", rpad("ready", 9), "   emptied")
     issource(n) = n in s.sources
     for (title, members) in _groups(s.order, n -> s.vessels[n], issource)
