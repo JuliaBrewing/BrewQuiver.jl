@@ -78,3 +78,13 @@ tl = timeline(q; start = 8u"hr")
 display(tl); println("\n")
 vesselchart(tl; to = 13u"hr")
 println("\nOverfilled vessels: ", isempty(overfilled(res, q)) ? "none" : overfilled(res, q))
+
+# the recipe for chosen targets: the grain bill (in its proportions), the hops, the sparge
+# water and the priming sugar for an original gravity, a bitterness, a pre-boil volume and
+# a carbonation
+println()
+sol = solve!(q, :fermentor => gravity => 1.052u"sg", :wort => ibu => 35u"IBU",
+             :kettle => volume => 28u"L", :bottles => carbonation => 2.4u"vols";
+             vary = [Amount(:pale, :crystal), Amount(:goldings), Amount(:sparge_water),
+                     Amount(:priming_sugar)])
+display(sol); println()

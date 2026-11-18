@@ -815,6 +815,84 @@ end
     @test volume(leftover(brew(q), :beer)) ≈ 1u"L" + 0.1u"kg" * 4u"L/kg"
 end
 
+@testset "Targets and solving" begin
+    # the grain bill for an original gravity, keeping its proportions
+    q = single_batch()
+    s = solve!(q, :fermentor => gravity => 1.060u"sg"; vary = Amount(:pale, :crystal))
+    @test s.converged
+    @test gravity(brew(q)[:fermentor]) ≈ 1.060u"sg" rtol = 1e-8
+    pale_kg = only(solids(q[:pale].initial)).amount
+    crystal_kg = only(solids(q[:crystal].initial)).amount
+    @test pale_kg > 4.5u"kg" && pale_kg / crystal_kg ≈ 4.5 / 0.3
+    @test s.result[:fermentor] ≈ brew(q)[:fermentor]
+    @test s.targets[1].second ≈ 1.060u"sg" rtol = 1e-8
+
+    # several targets at once: gravity, bitterness, pre-boil volume and carbonation
+    q = single_batch()
+    s = solve!(q, :fermentor => gravity => 1.052u"sg", :wort => ibu => 35u"IBU",
+               :kettle => volume => 28u"L", :bottles => carbonation => 2.4u"vols";
+               vary = [Amount(:pale, :crystal), Amount(:goldings), Amount(:sparge_water),
+                       Amount(:priming_sugar)])
+    @test s.converged
+    res = brew(q)
+    @test gravity(res[:fermentor]) ≈ 1.052u"sg" rtol = 1e-8
+    @test ibu(res[:wort]) ≈ 35u"IBU" rtol = 1e-8
+    @test volume(res[:kettle]) ≈ 28u"L" rtol = 1e-8
+    @test carbonation(res[:bottles]) ≈ 2.4u"vols" rtol = 1e-8
+    # the transfers of masses from the hops scale with them
+    @test [a.amount for a in q[:goldings => :kettle]] ≈
+          [30u"g", 20u"g"] .* (only(solids(q[:goldings].initial)).amount / 50u"g")
+    @test isempty(leftovers(res)) || !haskey(leftovers(res), :goldings)
+    @test conserved(res, q)
+
+    # a goal in other units, through the gravity model; a setting of an arrow
+    q = single_batch()
+    @test solve!(q, :fermentor => gravity => 12.5u"°P"; vary = Amount(:pale, :crystal)).converged
+    @test uconvert(u"°P", gravity(brew(q)[:fermentor]), SugarGravityQuad()) ≈ 12.5u"°P" rtol = 1e-6
+    s = solve!(q, :wort => ibu => 30u"IBU"; vary = Setting(:kettle => :wort, :time))
+    @test s.converged
+    @test ibu(brew(q)[:wort]) ≈ 30u"IBU" rtol = 1e-8
+    @test s.parameters[1].second == only(q[:kettle => :wort]).time
+    # the stand that gives the bitterness of a stand of 25 minutes
+    q[:kettle => :wort] = Boil(time = 60u"minute", evaporation = 4u"L/hr", stand = 25u"minute")
+    goal = ibu(brew(q)[:wort])
+    q[:kettle => :wort] = Boil(time = 60u"minute", evaporation = 4u"L/hr", stand = 10u"minute")
+    @test solve!(q, :wort => ibu => goal; vary = Setting(:kettle => :wort, :stand)).converged
+    @test only(q[:kettle => :wort]).stand ≈ 25u"minute" rtol = 1e-6
+
+    # the blend fractions of the parti-gyle, for the gravities of two beers
+    q = fullers()
+    s = solve!(q, :esb => original_gravity => 1.065u"sg", :pale_ale => original_gravity => 1.020u"sg";
+               vary = [Setting(:bright1 => :barley_wine, :amount), Setting(:bright3 => :pale_ale, :amount)])
+    @test s.converged
+    res = brew(q)
+    @test original_gravity(res[:esb]) ≈ 1.065u"sg" rtol = 1e-8
+    @test original_gravity(res[:pale_ale]) ≈ 1.020u"sg" rtol = 1e-8
+    @test 0.5 < only(q[:bright1 => :barley_wine]).amount < 1
+    @test 0.3 < only(q[:bright3 => :pale_ale]).amount < 1
+    @test conserved(res, q)
+
+    # a target out of reach: the solver stops, and says so
+    q = single_batch()
+    s = solve!(q, :wort => ibu => 40u"IBU"; vary = Setting(:kettle => :wort, :stand))
+    @test !s.converged
+    @test occursin("not converged", sprint(show, MIME"text/plain"(), s))
+
+    # the errors
+    q = single_batch()
+    @test_throws ArgumentError solve!(q, :fermentor => gravity => 1.05u"sg"; vary = Amount(:mash))
+    @test_throws ArgumentError solve!(q, :fermentor => gravity => 1.05u"sg"; vary = Amount(:nowhere))
+    @test_throws ArgumentError solve!(q, :fermentor => gravity => 1.05u"sg";
+                                      vary = [Amount(:pale), Amount(:goldings)])
+    @test_throws ArgumentError solve!(q, :fermentor => gravity => 1.05u"sg";
+                                      vary = Setting(:goldings => :kettle, :timing))
+    @test_throws ArgumentError solve!(q, :fermentor => gravity => 1.05u"sg";
+                                      vary = Setting(:kettle => :fermentor, :time))
+    shown = sprint(show, MIME"text/plain"(), solve!(single_batch(), :fermentor => gravity => 1.05u"sg";
+                                                    vary = Amount(:pale)))
+    @test occursin("amount of :pale", shown) && occursin("gravity(:fermentor)", shown)
+end
+
 include("beerjson.jl")
 
 end

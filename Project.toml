@@ -1,6 +1,6 @@
 name = "BrewQuiver"
 uuid = "118187b7-b799-44b0-b9bb-0e3bc43a37c1"
-version = "0.0.8"
+version = "0.0.9"
 authors = ["Ricardo Rosa <rmsrosa@gmail.com>"]
 
 [deps]
