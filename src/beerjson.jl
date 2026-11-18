@@ -71,7 +71,7 @@ function Culture(x::Union{BJ.CultureAdditionType, BJ.CultureInformation}; attenu
     a = something(_attenuation(x), attenuation, Some(nothing))
     a === nothing && throw(ArgumentError(
         "the culture $(repr(x.name)) has no attenuation; give it with the keyword `attenuation`"))
-    return Culture(x.name; attenuation = a)
+    return Culture(x.name; attenuation = a, kind = Symbol(x.type.value), form = Symbol(x.form.value))
 end
 _attenuation(x::BJ.CultureAdditionType) = _q(x.attenuation)
 _attenuation(x::BJ.CultureInformation) = x.attenuation_range === nothing ? nothing :

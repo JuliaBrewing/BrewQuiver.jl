@@ -71,12 +71,17 @@ const HOP_FORM_FACTORS = Dict{Symbol, Float64}(
 hop_form_factor(h::Hop) = get(HOP_FORM_FACTORS, h.form, 1.0)
 
 """
-    Culture(name; attenuation = 75u"percent")
+    Culture(name; attenuation = 75u"percent", kind = :ale, form = :liquid)
 
-A yeast or other culture with the given apparent `attenuation` (a percentage or fraction).
+A yeast or other culture with the given apparent `attenuation` (a percentage or fraction),
+of the `kind` and `form` of BeerJSON (`kind` one of `:ale`, `:lager`, `:brett`, `:lacto`,
+`:kveik`, ...; `form` one of `:liquid`, `:dry`, `:slant`, `:culture`, `:dregs`).
 """
 struct Culture <: AbstractIngredient
     name::String
     attenuation::Float64
+    kind::Symbol
+    form::Symbol
 end
-Culture(name::AbstractString; attenuation = 75u"percent") = Culture(name, _fraction(attenuation))
+Culture(name::AbstractString; attenuation = 75u"percent", kind::Symbol = :ale,
+        form::Symbol = :liquid) = Culture(name, _fraction(attenuation), kind, form)

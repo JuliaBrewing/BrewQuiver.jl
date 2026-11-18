@@ -72,6 +72,19 @@ boil rate. With `BrewhouseEfficiency()`, the conversion of the mash is adjusted 
 efficiency of the recipe; with `NoCalibration()` (the default), the efficiency follows from
 the processes. See [`examples/beerjson_recipe.jl`](examples/beerjson_recipe.jl).
 
+## Provenance and export
+
+`shares(res, q, product)` gives the share of each lot (ingredient or water) used for a
+product, and `attribution(res, q, product)` the share of every node: the fraction of its
+contents that goes into making the product, following the liquor, with what is left behind
+(spent grain, trub, yeast cake) allocated to the products it serves. In a parti-gyle, the
+shares of each lot among the beers add up to what was used of it.
+
+BeerJSON recipes are linear, so a quiver is exported as one recipe per product, holding the
+shares of its lots: `recipe(res, q, product)`, `recipes(res, q)`, and
+`write_beerjson(path, res, q)` for a BeerJSON document. A recipe exported from a quiver and
+imported back (with the equipment of its kettle) brews to the same wort and beer.
+
 ## References
 
 The formulas are those of BrewingFormulas, whose `REFERENCES.md` lists their sources. The

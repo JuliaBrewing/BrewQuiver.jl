@@ -3,6 +3,7 @@ using Unitful
 using UnitfulBrewing
 using BrewingFormulas
 using BrewQuiver
+using BeerJSON: BeerJSON
 
 const pale = Fermentable("Pale ale malt"; yield = 80u"percent", color = 3u"°L")
 const crystal = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L")
@@ -512,6 +513,107 @@ end
           ustrip(u"lb", 4u"kg") * ustrip(u"°L", invert.color)
     @test all(iszero(leftover(res, n)) for n in (:goldings, :invert))
     @test released(res).water ≈ 3 * 8u"L/hr" * 90u"minute" * BrewingFormulas.WATER_DENSITY_20C
+end
+
+@testset "Provenance" begin
+    # a single batch: every lot serves its only product, and the waste is allocated to it
+    q = single_batch()
+    res = brew(q)
+    a = attribution(res, q, :bottles)
+    @test all(≈(1), values(a))
+    @test shares(res, q, :bottles) == Dict(l => 1.0 for l in (:pale, :crystal, :goldings, :yeast,
+                                          :strike_water, :sparge_water, :priming_sugar))
+    @test_throws ArgumentError attribution(res, q, :nowhere)
+
+    # what remains on the shelf is not used
+    q2 = Quiver()
+    add!(q2, :w, water(10u"L"))
+    add!(q2, :hops, goldings => 100u"g")
+    add!(q2, :a)
+    connect!(q2, :w => :a, Transfer(4u"L"))
+    connect!(q2, :hops => :a, Transfer(30u"g"))
+    r2 = brew(q2)
+    s2 = shares(r2, q2, :a)
+    @test keys(s2) == Set([:w, :hops]) && s2[:w] ≈ 0.4 && s2[:hops] ≈ 0.3
+
+    # the parti-gyle: each lot is shared among the four beers
+    q = fullers()
+    res = brew(q)
+    beers = (:barley_wine, :esb, :pale_ale, :bitter)
+    s = Dict(b => shares(res, q, b) for b in beers)
+    for l in nodes(q)
+        isempty(predecessors(q, l)) || continue
+        @test sum(get(s[b], l, 0.0) for b in beers) ≈ 1
+    end
+    @test !haskey(s[:barley_wine], :yeast3) && !haskey(s[:bitter], :yeast1)
+    @test s[:esb][:yeast2] ≈ 0.4                   # 40% of the second beer goes to the ESB
+    @test s[:barley_wine][:goldings] ≈ 0.5 * 750 / 1500   # half of the first copper's hops
+    # the first runnings of the first mash go to the first copper, and so on
+    a = attribution(res, q, :barley_wine)
+    @test a[:wort1] ≈ 0.5 && a[:fermentor1] ≈ 0.5 && a[:wort2] == 0
+    @test 0 < a[:mash1] < 0.5
+end
+
+@testset "Export to BeerJSON" begin
+    q = single_batch()
+    res = brew(q)
+    r = recipe(res, q, :bottles; name = "Bitter", author = "BrewQuiver")
+    @test isempty(BeerJSON.violations(r))
+    @test r.name == "Bitter" && r.type.value == "all grain"
+    @test BeerJSON.quantity(r.batch_size) ≈ volume(res[:fermentor])
+    @test BeerJSON.quantity(r.boil.pre_boil_size) ≈ volume(res[:kettle])
+    @test ustrip(BeerJSON.quantity(r.efficiency.brewhouse)) / 100 ≈ brewhouse_efficiency(res, q)
+    @test BeerJSON.quantity(r.original_gravity) ≈ original_gravity(res[:beer])   # before priming
+    @test BeerJSON.quantity(r.alcohol_by_volume) ≈ abv(res[:beer])
+    @test r.carbonation ≈ ustrip(carbonation(res[:bottles]))
+    f = r.ingredients.fermentable_additions
+    @test [x.name for x in f] == ["Pale ale malt", "Crystal 60", "Corn sugar"]
+    @test BeerJSON.quantity(f[1].amount) ≈ 4.5u"kg"
+    @test [x.timing.use.value for x in f] == ["add_to_mash", "add_to_mash", "add_to_package"]
+    h = r.ingredients.hop_additions
+    @test [BeerJSON.quantity(x.timing.time) for x in h] == [60u"minute", 10u"minute"]
+    @test [BeerJSON.quantity(x.amount) for x in h] ≈ [30u"g", 20u"g"]
+    steps = r.mash.mash_steps
+    @test [x.type.value for x in steps] == ["infusion", "sparge"]
+    @test [BeerJSON.quantity(x.amount) for x in steps] ≈ [16u"L", 14u"L"]
+    @test BeerJSON.quantity(steps[1].infuse_temperature) ≈ 75u"°C"
+    @test BeerJSON.quantity(r.fermentation.fermentation_steps[1].step_time) == 14u"d"
+
+    # back into a quiver: the same wort and beer, given the kettle of the quiver
+    kettle = BeerJSON.EquipmentType{Int64, Float64}(name = "Kit", equipment_items = [
+        (name = "Kettle", form = "Brew Kettle", maximum_volume = (unit = "l", value = 40),
+         loss = (unit = "l", value = 1), boil_rate_per_hour = (unit = "l", value = 4))])
+    q2 = Quiver(r; equipment = kettle)
+    r2 = brew(q2)
+    @test volume(r2[:kettle]) ≈ volume(res[:kettle]) rtol = 1e-6
+    @test volume(r2[:fermentor]) ≈ volume(res[:fermentor]) rtol = 1e-6
+    @test gravity(r2[:fermentor]) ≈ gravity(res[:fermentor]) rtol = 1e-6
+    @test ibu(r2[:beer]) ≈ ibu(res[:beer]) rtol = 1e-6
+    @test abv(r2[:beer]) ≈ abv(res[:beer]) rtol = 1e-6
+    @test apparent_attenuation(r2[:beer]) ≈ apparent_attenuation(res[:beer])
+
+    # the parti-gyle: four recipes, which add up to the brew
+    q = fullers()
+    res = brew(q)
+    rs = recipes(res, q)
+    @test [x.name for x in rs] == ["barley_wine", "esb", "pale_ale", "bitter"]
+    @test all(x -> isempty(BeerJSON.violations(x)), rs)
+    amount(x, name) = sum((BeerJSON.quantity(f.amount) for f in x.ingredients.fermentable_additions
+                           if f.name == name); init = 0.0u"kg")
+    @test sum(amount(x, "Pale ale malt") for x in rs) ≈ 75u"kg"
+    @test sum(amount(x, "Invert sugar") for x in rs) ≈ 4u"kg"
+    @test amount(rs[4], "Invert sugar") == 0u"kg"            # only in the first copper
+    @test sum(BeerJSON.quantity(h.amount) for x in rs for h in x.ingredients.hop_additions) ≈ 1.5u"kg"
+    @test sum(BeerJSON.quantity(x.batch_size) for x in rs) ≈
+          sum(volume(res[Symbol(:fermentor, i)]) for i in 1:3)
+    @test sum(BeerJSON.quantity(x.mash.mash_steps[1].amount) for x in rs) ≈ 220u"L"
+    @test BeerJSON.quantity(rs[1].original_gravity) ≈ original_gravity(res[:barley_wine])
+
+    # written to a BeerJSON document and read back
+    path = write_beerjson(tempname() * ".json", res, q; author = "BrewQuiver")
+    doc = BeerJSON.readjson(BeerJSON.BeerJSONParser, path)
+    @test length(doc.beerjson.recipes) == 4
+    @test doc.beerjson.recipes[2].author == "BrewQuiver"
 end
 
 include("beerjson.jl")
