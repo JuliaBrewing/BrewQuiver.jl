@@ -20,6 +20,15 @@ extract_equivalent(c::Contents) = extract_equivalent(liquor(c))
 extract_of(f::Fermentable, m, conversion = 1.0) =
     conversion * potential_extract(m, f.yield; moisture = f.moisture)
 
+# conservation over the whole quiver: the initial contents are all left over somewhere
+# (the products included), except what the arrows released
+function conserved(res, q)
+    initial = [q[n].initial for n in nodes(q)]
+    left = collect(values(leftovers(res)))
+    r = released(res)
+    return sum(total_mass, initial) ≈ sum(total_mass, left) + r.water + r.co2
+end
+
 @testset "BrewQuiver" begin
 
 @testset "Liquor" begin
@@ -204,15 +213,6 @@ function single_batch(; priming = 110u"g")
     connect!(q, :beer => :bottling, Drain(retain = 1u"L"))
     connect!(q, :bottling => :bottles, Prime())
     return q
-end
-
-# conservation over the whole quiver: the initial contents are all left over somewhere
-# (the products included), except what the arrows released
-function conserved(res, q)
-    initial = [q[n].initial for n in nodes(q)]
-    left = collect(values(leftovers(res)))
-    r = released(res)
-    return sum(total_mass, initial) ≈ sum(total_mass, left) + r.water + r.co2
 end
 
 @testset "Single batch" begin
@@ -513,5 +513,7 @@ end
     @test all(iszero(leftover(res, n)) for n in (:goldings, :invert))
     @test released(res).water ≈ 3 * 8u"L/hr" * 90u"minute" * BrewingFormulas.WATER_DENSITY_20C
 end
+
+include("beerjson.jl")
 
 end

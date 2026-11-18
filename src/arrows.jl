@@ -99,6 +99,8 @@ Drain(; absorption = 1.0u"L/kg", retain = 0u"L") =
 function _drain(d::Drain, c::Contents, eq)
     v = volume(c; eq)
     kept = grist(c) * d.absorption + d.retain
+    # (all of it retained, up to rounding errors: nothing is drained)
+    kept > v && isapprox(kept, v; rtol = 1e-9) && (kept = v)
     kept ≤ v || throw(ArgumentError(
         "not enough liquid to drain: $(round(u"L", v; digits = 2)) available, " *
         "$(round(u"L", kept; digits = 2)) retained by the grain and the vessel"))

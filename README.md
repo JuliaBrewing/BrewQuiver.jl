@@ -49,6 +49,29 @@ Pkg.add(url = "https://github.com/JuliaBrewing/BrewQuiver.jl")
 - **Models** (hop utilization, color, ABV, gravity conversion) come from BrewingFormulas and
   are chosen per brew: `brew(q; models = (bitterness = Rager(),))`.
 
+## BeerJSON recipes
+
+With [BeerJSON.jl](https://github.com/JuliaBrewing/BeerJSON.jl), the ingredients of BeerJSON
+convert to the working types (`Fermentable(addition)`, `Hop(addition)`, `Culture(addition)`),
+and a recipe builds its quiver: its ingredients as lots, the water, and the stages of the mash
+tun, the kettle, the fermentor and the packaging.
+
+```julia
+using BeerJSON
+
+recipe = only(readjson(BeerJSONParser, "RRSummerBitter.json").beerjson.recipes)
+q = Quiver(recipe; calibration = BrewhouseEfficiency())
+res = brew(q)
+brewhouse_efficiency(res, q)    # 0.75, as in the recipe
+```
+
+The volumes the recipe does not give are solved for its own targets: the sparge water for
+its pre-boil volume, the evaporation rate and the kettle loss for its batch size. An
+`equipment` (a BeerJSON `EquipmentType`) gives the grain absorption, dead spaces, losses and
+boil rate. With `BrewhouseEfficiency()`, the conversion of the mash is adjusted to the
+efficiency of the recipe; with `NoCalibration()` (the default), the efficiency follows from
+the processes. See [`examples/beerjson_recipe.jl`](examples/beerjson_recipe.jl).
+
 ## References
 
 The formulas are those of BrewingFormulas, whose `REFERENCES.md` lists their sources. The
