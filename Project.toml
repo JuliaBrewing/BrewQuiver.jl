@@ -1,0 +1,29 @@
+name = "BrewQuiver"
+uuid = "118187b7-b799-44b0-b9bb-0e3bc43a37c1"
+version = "0.0.1"
+authors = ["Ricardo Rosa <rmsrosa@gmail.com>"]
+
+[deps]
+BrewingFormulas = "a9505d62-7541-4c16-ab4a-19ef00b85701"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+MetaGraphsNext = "fa8bd995-216d-47f1-8a91-f3b68fbeb377"
+Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+UnitfulBrewing = "0971afc3-6d60-4b49-b3a1-be0ef054b0bb"
+
+[sources]
+BrewingFormulas = {rev = "main", url = "https://github.com/JuliaBrewing/BrewingFormulas.jl"}
+UnitfulBrewing = {rev = "main", url = "https://github.com/JuliaBrewing/UnitfulBrewing.jl"}
+
+[compat]
+BrewingFormulas = "0.1"
+Graphs = "1.15.0"
+MetaGraphsNext = "0.8.0"
+Unitful = "1.29.0"
+UnitfulBrewing = "0.1"
+julia = "1.11"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
