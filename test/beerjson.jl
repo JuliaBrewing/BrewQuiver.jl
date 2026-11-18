@@ -110,6 +110,39 @@ end
     @test any(s -> s isa Portion{Hop} && s.timing == Remaining(0u"minute"), solids(res[:kettle]))
 end
 
+@testset "Timings" begin
+    # BeerJSON (format 3.0): in the boil, `time` counts back from the end of the boil; in
+    # the mash, the fermentation and the packaging, forward from the start of the step
+    T = BeerJSON.TimingType{Int64, Float64}
+    t(; kwargs...) = T(; kwargs...)
+    min(v) = (unit = "min", value = v)
+    @test BrewQuiver._timing(t(time = min(10), use = "add_to_boil"), :boil) == Remaining(10u"minute")
+    @test BrewQuiver._timing(t(duration = min(20), use = "add_to_boil"), :boil) ==
+          Remaining(0u"minute")                                       # a hop stand
+    @test BrewQuiver._timing(t(time = (unit = "day", value = 2), use = "add_to_fermentation"),
+                             :fermentation) == At(2u"d")
+    @test BrewQuiver._timing(t(duration = (unit = "day", value = 3), use = "add_to_fermentation"),
+                             :fermentation) == Remaining(3u"d")
+    @test BrewQuiver._timing(t(time = min(5), duration = min(20), use = "add_to_mash"), :mash) ==
+          At(5u"minute")
+    @test BrewQuiver._timing(t(use = "add_to_boil"), :boil) === nothing
+    @test BrewQuiver._timing(nothing, :boil) === nothing
+
+    # a dry hop added 2 days into the fermentation
+    q = quietly(() -> Quiver(recipe("generic", "recipes.json")))
+    @test only(q[:citra => :fermentor]).timing == At(2u"d")
+
+    # dry hops added 3 days into the fermentation, and hops in the package without timing
+    q = quietly(() -> Quiver(recipe("real", "CheaterHops.json")))
+    @test only(q[:mosaic => :fermentor]).timing == At(3u"d")
+    @test only(q[:mosaic => :packaging]).timing === nothing
+    @test [a.timing for a in q[:columbus => :kettle]] ==
+          [Remaining(15u"minute"), Remaining(30u"minute")]
+    res = brew(q)
+    @test any(s -> s isa Portion{Hop} && s.timing == At(3u"d"), solids(res[:fermentor]))
+    @test conserved(res, q)
+end
+
 @testset "Equipment" begin
     r = recipe("converted", "RRSummerBitter.json")
     large, small = document("real", "EquipmentSet.json").equipments
