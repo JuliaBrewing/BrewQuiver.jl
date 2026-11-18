@@ -31,6 +31,9 @@ function conserved(res, q)
     return sum(total_mass, initial) ≈ sum(total_mass, left) + r.water + r.co2
 end
 
+# an arrow unknown to the files of quivers
+struct Whirlpool <: BrewQuiver.AbstractTransformation end
+
 @testset "BrewQuiver" begin
 
 @testset "Liquor" begin
@@ -611,7 +614,7 @@ end
     @test BeerJSON.quantity(rs[1].original_gravity) ≈ original_gravity(res[:barley_wine])
 
     # written to a BeerJSON document and read back
-    path = write_beerjson(tempname() * ".json", res, q; author = "BrewQuiver")
+    path = writejson(tempname() * ".json", res, q; author = "BrewQuiver")
     doc = BeerJSON.readjson(BeerJSON.BeerJSONParser, path)
     @test length(doc.beerjson.recipes) == 4
     @test doc.beerjson.recipes[2].author == "BrewQuiver"
@@ -1006,12 +1009,12 @@ end
     @test iszero(stock(lib, "Crystal 60"))
 
     # written to BeerJSON and read back
-    path = write_beerjson(tempname() * ".json", lib)
+    path = writejson(tempname() * ".json", lib)
     back = Library(path)
     @test keys(back) == keys(lib)
     @test back["Pale ale malt"] == pale && back["East Kent Goldings"] == goldings
     push!(lib, Fermentable("Roast barley"; color = 500u"°L", di_ph = 4.6); stock = 1u"kg")
-    @test Library(write_beerjson(tempname() * ".json", lib))["Roast barley"].di_ph ≈ 4.6
+    @test readjson(Library, writejson(tempname() * ".json", lib))["Roast barley"].di_ph ≈ 4.6
     @test back["English ale"].attenuation ≈ ale.attenuation
     @test stock(back, "Pale ale malt") ≈ stock(lib, "Pale ale malt")
     @test stock(back, "English ale") === nothing                  # (a count: not written)
@@ -1031,5 +1034,92 @@ end
 end
 
 include("beerjson.jl")
+# Files of quivers: JGF documents with BeerJSON ingredients, read back to the same brew
+
+roundtrip(q; kwargs...) = readjson(Quiver, writejson(tempname() * ".json", q; kwargs...))
+
+function samebrew(q, q2)
+    res, r2 = brew(q), brew(q2)
+    return nodes(q2) == nodes(q) && all(r2[n] ≈ res[n] for n in nodes(q))
+end
+
+@testset "Files of quivers" begin
+    # a single batch with equipment, salts and acids, a hop stand, timings and priming
+    roast = Fermentable("Roast barley"; color = 500u"°L", di_ph = 4.6, buffering = 60)
+    q = single_batch()
+    add!(q, :roast, roast => 0.1u"kg")
+    add!(q, :gypsum, Salt(Gypsum()) => 4u"g")
+    add!(q, :lactic, Acid(LacticAcid(); name = "Lactic") => 2u"mL")
+    connect!(q, [:roast, :gypsum, :lactic] => :mash)
+    q[:kettle => :wort] = Boil(time = 60u"minute", stand = 20u"minute", stand_temperature = 80u"°C")
+    q[:goldings] = goldings => 55u"g"
+    connect!(q, :goldings => :kettle, Transfer(5u"g"; at = 5u"minute"))
+    equip!(q, :mashtun, Vessel(capacity = 25u"L", dead_space = 0.5u"L", absorption = 0.9u"L/kg"))
+    equip!(q, :kettle, Vessel(capacity = 40u"L", evaporation = 10u"percent/hr", drain_rate = 1u"L/minute"))
+    nodeview(q, :mash)["position"] = [120, 40]
+    nodeview(q, :mash)["color"] = "#c08040"
+    res = brew(q)
+
+    path = writejson(tempname() * ".json", q; results = res)
+    q2 = readjson(Quiver, path)
+    @test samebrew(q, q2)
+    @test q2.equipment == q.equipment
+    @test [vessel(q2, n) for n in nodes(q2)] == [vessel(q, n) for n in nodes(q)]
+    @test sort(arrows(q2); by = string) == sort(arrows(q); by = string)
+    @test nodeview(q2, :mash) == Dict("position" => [120, 40], "color" => "#c08040")
+    @test isempty(nodeview(q2, :kettle))
+    @test only(solids(q2[:roast].initial)).ingredient == roast        # with di_ph and buffering
+    @test only(solids(q2[:yeast].initial)).ingredient == ale
+    ph = quietly(() -> mash_ph(res[:mash]))     # (Crystal 60 has no distilled water pH)
+    @test quietly(() -> mash_ph(brew(q2)[:mash])) ≈ ph
+
+    # a JGF document, with BeerJSON records of the ingredients and the values of the brew
+    doc = BrewQuiver.JSON.parsefile(path)
+    g = doc["graph"]
+    @test g["directed"] && g["metadata"]["format_version"] == 1
+    @test length(g["nodes"]) == length(nodes(q)) && length(g["edges"]) == length(arrows(q))
+    @test Set(x["name"] for x in g["metadata"]["ingredients"]["fermentables"]) ==
+          Set(["Pale ale malt", "Crystal 60", "Corn sugar", "Roast barley"])
+    @test g["metadata"]["ingredients"]["hop_varieties"][1]["alpha_acid"] == Dict("unit" => "%", "value" => 5)
+    beer = g["nodes"]["beer"]["metadata"]["computed"]
+    @test beer["ibu"]["value"] ≈ ustrip(u"IBU", ibu(res[:beer]))
+    @test beer["abv"]["unit"] == "%" && beer["abv"]["value"] ≈ ustrip(u"percent", abv(res[:beer]))
+    @test g["nodes"]["mash"]["metadata"]["computed"]["mash_ph"] ≈ ph
+    @test !haskey(g["nodes"]["kettle"]["metadata"], "initial")              # an empty stage
+    @test g["metadata"]["computed"]["models"]["bitterness"] == "Tinseth"
+    # the values of the brew are not read: changing them changes nothing
+    g["nodes"]["beer"]["metadata"]["computed"]["ibu"]["value"] = 1000
+    io = IOBuffer()
+    BrewQuiver.JSON.json(io, doc)
+    @test samebrew(q, readjson(Quiver, IOBuffer(take!(io))))
+
+    # without results, nothing computed; to and from streams
+    io = IOBuffer()
+    writejson(io, q)
+    s = String(take!(io))
+    @test !occursin("computed", s)
+    @test samebrew(q, readjson(Quiver, IOBuffer(s)))
+
+    # the parti-gyle and a quiver of a BeerJSON recipe
+    @test samebrew(fullers(), roundtrip(fullers()))
+    k = quietly(() -> Quiver(sample_recipe("converted", "Kolsh.json")))
+    @test samebrew(k, roundtrip(k; results = brew(k)))
+
+    # errors
+    bad = single_batch()
+    add!(bad, :other_pale, Fermentable("Pale ale malt"; color = 4u"°L") => 1u"kg")
+    @test_throws ArgumentError writejson(IOBuffer(), bad)                 # two "Pale ale malt"
+    odd = single_batch()
+    add!(odd, :whirled)
+    connect!(odd, :bottles => :whirled, Whirlpool())
+    @test_throws ArgumentError writejson(IOBuffer(), odd)                 # not registered
+    newer = replace(s, r"\"format_version\": *1" => "\"format_version\": 99")
+    @test_throws ArgumentError readjson(Quiver, IOBuffer(newer))
+    @test_throws ArgumentError readjson(Quiver, IOBuffer("{\"nodes\": {}}"))
+
+    # the deprecated writer
+    @test isfile(quietly(() -> write_beerjson(tempname() * ".json", res, q)))
+end
+
 
 end

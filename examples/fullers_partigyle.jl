@@ -96,5 +96,5 @@ println("\nThe lots used for the ESB:")
 for (l, s) in sort!(collect(shares(res, q, :esb)); by = first)
     println("  ", rpad(":$l", 12), round(100s; digits = 1), "% of ", q[l].initial)
 end
-path = write_beerjson(joinpath(tempdir(), "fullers.json"), res, q; author = "BrewQuiver")
+path = writejson(joinpath(tempdir(), "fullers.json"), res, q; author = "BrewQuiver")
 println("\nThe four recipes are in ", path)

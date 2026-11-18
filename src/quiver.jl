@@ -5,12 +5,17 @@
     Node
 
 A node of a [`Quiver`](@ref): its `initial` contents (the lots on the shelf, the water;
-empty for the stages filled by arrows) and the `vessel` it is in, if given.
+empty for the stages filled by arrows), the `vessel` it is in, if given, and `view`, free
+data for interfaces (a position, a color, ...; see [`nodeview`](@ref)), kept by the files of
+quivers.
 """
 struct Node
     initial::Contents
     vessel::Union{Nothing, Symbol}
+    # free data for interfaces (a position, a color, ...), kept by the files of quivers
+    view::Dict{String, Any}
 end
+Node(initial::Contents, vessel) = Node(initial, vessel, Dict{String, Any}())
 
 """
     Quiver()
@@ -111,7 +116,7 @@ Replaces the initial contents of the node `label`, keeping its vessel.
 """
 function Base.setindex!(q::Quiver, initial, label::Symbol)
     haskey(q, label) || throw(ArgumentError("there is no node labelled :$label; use `add!`"))
-    return _set!(q, label, Node(_contents(initial), vessel(q, label)))
+    return _set!(q, label, Node(_contents(initial), vessel(q, label), q[label].view))
 end
 
 """
@@ -267,3 +272,11 @@ function descendants(q::Quiver, label::Symbol)
     c = code_for(q.graph, label)
     return [n for n in nodes(q) if n == label || has_path(q.graph.graph, c, code_for(q.graph, n))]
 end
+
+"""
+    nodeview(q::Quiver, label) -> Dict{String, Any}
+
+The free data of the node `label` for interfaces (a position, a color, ...), which BrewQuiver
+does not use but keeps in the files of quivers (see `writejson`). It can be changed in place.
+"""
+nodeview(q::Quiver, label::Symbol) = q[label].view
