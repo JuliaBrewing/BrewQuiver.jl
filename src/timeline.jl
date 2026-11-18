@@ -18,7 +18,7 @@ The result of [`timeline`](@ref): `s[label]` gives the times of a node, a NamedT
 `(arrive, ready, leave)` (when its contents start arriving, when they are all in, and when
 they are all gone, `nothing` for the nodes nothing leaves), and `s[source => destination]`
 the [`Interval`](@ref)s of the arrows between two nodes, in their order. See also
-[`makespan`](@ref), [`overlaps`](@ref) and [`gantt`](@ref).
+[`makespan`](@ref), [`overlaps`](@ref) and [`vesselchart`](@ref).
 """
 struct Timeline
     nodes::Dict{Symbol, @NamedTuple{arrive::MinQ, ready::MinQ, leave::Union{Nothing, MinQ}}}
@@ -177,13 +177,13 @@ function _clock(t)
 end
 
 """
-    gantt([io], s::Timeline; from = start, to = end, width = 60)
+    vesselchart([io], s::Timeline; from = start, to = end, width = 60)
 
 Prints the timeline as a chart, a row per vessel, between the times `from` and `to`: `█`
 where a transformation runs in the vessel, `▒` where it holds contents otherwise.
 """
-gantt(s::Timeline; kwargs...) = gantt(stdout, s; kwargs...)
-function gantt(io::IO, s::Timeline; from = nothing, to = nothing, width::Integer = 60)
+vesselchart(s::Timeline; kwargs...) = vesselchart(stdout, s; kwargs...)
+function vesselchart(io::IO, s::Timeline; from = nothing, to = nothing, width::Integer = 60)
     t0 = from === nothing ? minimum(x.arrive for x in values(s.nodes)) : _minutes(from)
     t1 = to === nothing ? t0 + makespan(s) : _minutes(to)
     t1 > t0 || throw(ArgumentError("the chart needs `to` after `from`"))

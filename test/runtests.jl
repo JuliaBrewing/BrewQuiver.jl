@@ -682,10 +682,10 @@ end
     s = timeline(single_batch())
     shown = sprint(show, MIME"text/plain"(), s)
     @test occursin("Timeline over 28d 2:00", shown) && occursin("[kettle]", shown)
-    chart = sprint(io -> gantt(io, s; to = 3hr, width = 36))
+    chart = sprint(io -> vesselchart(io, s; to = 3hr, width = 36))
     @test occursin("mashtun", chart) && occursin('█', chart)
     @test count('\n', chart) == 5
-    @test_throws ArgumentError gantt(devnull, s; from = 2hr, to = 1hr)
+    @test_throws ArgumentError vesselchart(devnull, s; from = 2hr, to = 1hr)
 end
 
 include("beerjson.jl")

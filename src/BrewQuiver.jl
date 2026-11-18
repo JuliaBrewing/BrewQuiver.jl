@@ -82,6 +82,6 @@ export recipe, recipes, write_beerjson
 export attribution, shares
 
 # timeline
-export duration, timeline, Timeline, Interval, makespan, overlaps, gantt
+export duration, timeline, Timeline, Interval, makespan, overlaps, vesselchart
 
 end # module

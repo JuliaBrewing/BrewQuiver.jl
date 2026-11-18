@@ -68,4 +68,4 @@ println("Priming sugar for 2.4 vols: ", round(u"g", priming_mass(res[:beer => :b
 println()
 tl = timeline(q; start = 8u"hr")
 display(tl); println("\n")
-gantt(tl; to = 13u"hr")
+vesselchart(tl; to = 13u"hr")

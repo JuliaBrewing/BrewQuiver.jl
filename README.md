@@ -94,13 +94,13 @@ have arrived, the lots without timing arrive then (the yeast is pitched when the
 in), the timed additions arrive during the transformation that follows (a hop with 10
 minutes of boil left), and the transfers of the rest follow the drains (the grain bed is
 sparged after the first runnings). It gives when each node is filled, ready and emptied,
-grouped by vessel, `gantt(s)` draws it as a chart, and `overlaps(s)` flags a vessel
+grouped by vessel, `vesselchart(s)` draws it as a chart, and `overlaps(s)` flags a vessel
 booked for two contents at once.
 
 ```julia
 s = timeline(q; start = 8u"hr")
 s[:kettle]             # (arrive = 540 min, ready = 575 min, leave = 635 min)
-gantt(s; to = 13u"hr")
+vesselchart(s; to = 13u"hr")
 ```
 
 ```
