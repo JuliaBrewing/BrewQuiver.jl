@@ -48,6 +48,7 @@ include("brew.jl")
 include("provenance.jl")
 include("beerjson.jl")
 include("export.jl")
+include("library.jl")
 include("timeline.jl")
 include("solve.jl")
 include("show.jl")
@@ -80,6 +81,9 @@ export products
 # BeerJSON
 export AbstractCalibration, NoCalibration, BrewhouseEfficiency, brewhouse_efficiency
 export recipe, recipes, write_beerjson
+
+# ingredient library and inventory
+export Library, stock, stock!, lookup, requirements, shortages, consume!
 
 # provenance
 export attribution, shares

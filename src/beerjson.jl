@@ -170,13 +170,19 @@ function _timing(t, stage)
 end
 
 # the additions of a recipe, each as (ingredient, amount, stage, timing)
-function _additions(r, boil_time, attenuation)
+# the record of the library of the given type and name, or `nothing`
+_from(::Nothing, T, name) = nothing
+_from(lib, T, name) = haskey(lib.ingredients, name) && lib.ingredients[name] isa T ? lib.ingredients[name] : nothing
+
+# (`att` is the attenuation of the recipe's gravities, or `nothing`; `attenuation` the default)
+function _additions(r, boil_time, att, attenuation, library = nothing)
     adds = Tuple{AbstractIngredient, Union{KgQ, Float64}, Symbol, Any}[]
     stages = Dict("add_to_mash" => :mash, "add_to_boil" => :boil,
                   "add_to_fermentation" => :fermentation, "add_to_package" => :package)
     use(t) = t === nothing || t.use === nothing ? nothing : stages[t.use.value]
     for a in r.ingredients.fermentable_additions
-        f = Fermentable(a)
+        known = _from(library, Fermentable, a.name)
+        f = Fermentable(a; moisture = known === nothing ? nothing : known.moisture)
         a.amount isa BJ.MassType || throw(ArgumentError(
             "the fermentable $(repr(a.name)) is given by volume; give its mass"))
         stage = something(use(a.timing), soluble(f) ? :boil : :mash)
@@ -205,7 +211,9 @@ function _additions(r, boil_time, attenuation)
         push!(adds, (h, m, stage, timing))
     end
     for a in something(r.ingredients.culture_additions, [])
-        c = Culture(a; attenuation)
+        known = _from(library, Culture, a.name)
+        c = Culture(a; attenuation = something(att, known === nothing ? nothing : known.attenuation,
+                                               attenuation))
         n = a.amount isa BJ.MassType ? _portion_amount(_q(a.amount)) :
             a.amount isa BJ.UnitType ? float(_q(a.amount)) : 1.0     # a volume: one unit
         stage = something(use(a.timing), :fermentation)
@@ -346,6 +354,10 @@ from the end of the boil ([`Remaining`](@ref)), and an addition with only a `dur
 steeps after the boil, in a stand (see [`Boil`](@ref)); in the mash, the
 fermentation and the packaging, `time` counts forward from the start of the step
 ([`At`](@ref)), and an addition with only a `duration` stays until the end of the step.
+A [`Library`](@ref) given as `library` completes the additions with its records of the same
+name: the moisture of fermentables, and the attenuation of cultures that have none (after
+the attenuation of the recipe's gravities).
+
 Hops added to the mash are taken as first wort hops, boiling for the whole boil; hops
 added to the boil earlier than the boil starts (as in documents converted from BeerXML
 before the importer of BeerJSON was fixed) are taken as dry hops, with a warning.
@@ -361,7 +373,8 @@ Souring steps are not supported yet.
 function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = nothing,
                 calibration::AbstractCalibration = NoCalibration(),
                 mash_ratio = 3u"L/kg", attenuation = 75u"percent",
-                decoction_time = 15u"minute", stand_temperature = 80u"°C")
+                decoction_time = 15u"minute", stand_temperature = 80u"°C",
+                library = nothing)
     vessels = _equipment(equipment)
     kv = get(vessels, :kettle, Vessel(name = "Kettle"))
     batch = uconvert(u"L", _q(r.batch_size))
@@ -374,11 +387,13 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
         nothing
     end
     cultures_without = r.ingredients.culture_additions === nothing ? false :
-        any(a -> a.attenuation === nothing, r.ingredients.culture_additions)
+        any(a -> a.attenuation === nothing && _from(library, Culture, a.name) === nothing,
+            r.ingredients.culture_additions)
+    # (the cultures without attenuation: the recipe's gravities, the library, or the default)
     if cultures_without && att === nothing
         @warn "$(repr(r.name)): cultures without attenuation are taken with $attenuation"
     end
-    adds = _additions(r, boil_time, something(att, attenuation))
+    adds = _additions(r, boil_time, att, attenuation, library)
     isempty(adds) && throw(ArgumentError("the recipe $(repr(r.name)) has no ingredients"))
 
     # the stand after the boil: from the boil steps, or the longest steep of the additions;
