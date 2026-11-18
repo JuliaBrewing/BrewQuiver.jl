@@ -141,6 +141,26 @@ function _label(name, taken)
     return l
 end
 
+# The timing of an addition, by its stage, as defined by BeerJSON (format 3.0, where
+# beerjson/beerjson#220 settled the reference of `time`): in the boil, `time` counts back
+# from the end of the boil, and a `duration` without `time` is a steep after the boil (a hop
+# stand, not modelled yet: no boiling); in the mash, the fermentation and the packaging,
+# `time` counts forward from the start of the step, and a `duration` without `time` is taken
+# as staying until the end of the step.
+function _timing(t, stage)
+    t === nothing && return nothing
+    time = t.time === nothing ? nothing : _q(t.time)
+    duration = t.duration === nothing ? nothing : _q(t.duration)
+    if stage === :boil
+        time !== nothing && return Remaining(time)
+        duration !== nothing && return Remaining(0u"minute")
+    else
+        time !== nothing && return At(time)
+        duration !== nothing && return Remaining(duration)
+    end
+    return nothing
+end
+
 # the additions of a recipe, each as (ingredient, amount, stage, timing)
 function _additions(r, boil_time, attenuation)
     adds = Tuple{AbstractIngredient, Union{KgQ, Float64}, Symbol, Any}[]
@@ -154,7 +174,7 @@ function _additions(r, boil_time, attenuation)
         stage = something(use(a.timing), soluble(f) ? :boil : :mash)
         stage === :boil && !soluble(f) &&
             @warn "the grain $(repr(a.name)) is added to the boil, where it gives no extract"
-        push!(adds, (f, _portion_amount(_q(a.amount)), stage, nothing))
+        push!(adds, (f, _portion_amount(_q(a.amount)), stage, _timing(a.timing, stage)))
     end
     for a in something(r.ingredients.hop_additions, [])
         if !(a.amount isa BJ.MassType)
@@ -164,19 +184,15 @@ function _additions(r, boil_time, attenuation)
         h, m, t = Hop(a), _portion_amount(_q(a.amount)), a.timing
         stage = something(use(t), :boil)
         time = t.time === nothing ? nothing : _q(t.time)
-        duration = t.duration === nothing ? nothing : _q(t.duration)
-        timing = nothing
         if stage === :mash                       # mash hops: taken as first wort hops
-            stage = :boil
+            stage, timing = :boil, nothing
         elseif stage === :boil && time !== nothing && time > boil_time
+            # (as in documents converted from BeerXML before beerjson/beerjson#268)
             @warn "the hop $(repr(a.name)) is added $time before the end of a $boil_time " *
                   "boil: it is taken as a dry hop"
             stage, timing = :fermentation, Remaining(time)
-        elseif stage === :boil
-            timing = time === nothing ? nothing : Remaining(time)
-        elseif stage === :fermentation
-            d = something(duration, time, Some(nothing))
-            timing = d === nothing ? nothing : Remaining(d)
+        else
+            timing = _timing(t, stage)
         end
         push!(adds, (h, m, stage, timing))
     end
@@ -184,7 +200,8 @@ function _additions(r, boil_time, attenuation)
         c = Culture(a; attenuation)
         n = a.amount isa BJ.MassType ? _portion_amount(_q(a.amount)) :
             a.amount isa BJ.UnitType ? float(_q(a.amount)) : 1.0     # a volume: one unit
-        push!(adds, (c, n, something(use(a.timing), :fermentation), nothing))
+        stage = something(use(a.timing), :fermentation)
+        push!(adds, (c, n, stage, _timing(a.timing, stage)))
     end
     ignored = [string(length(x), " ", what) for (x, what) in
                ((r.ingredients.miscellaneous_additions, "miscellaneous additions"),
@@ -261,8 +278,14 @@ or [`BrewhouseEfficiency`](@ref)) sets the conversion of the mash. Cultures with
 attenuation get the apparent attenuation of the recipe's original and final gravities, or
 else `attenuation`, with a warning.
 
+The timings of the additions follow BeerJSON (format 3.0): in the boil, `time` counts back
+from the end of the boil ([`Remaining`](@ref)), and an addition with only a `duration`
+steeps after the boil (not modelled yet, so it does not boil); in the mash, the
+fermentation and the packaging, `time` counts forward from the start of the step
+([`At`](@ref)), and an addition with only a `duration` stays until the end of the step.
 Hops added to the mash are taken as first wort hops, boiling for the whole boil; hops
-added to the boil earlier than the boil starts are taken as dry hops, with a warning.
+added to the boil earlier than the boil starts (as in documents converted from BeerXML
+before the importer of BeerJSON was fixed) are taken as dry hops, with a warning.
 Miscellaneous and water additions are not used yet. Decoction and souring steps are not
 supported yet.
 """
@@ -349,7 +372,8 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
             # all of the lot for its only addition, else the amount of each
             amount = length(as) == 1 ? nothing : m isa KgQ ? m : m / total[i]
             remaining = timing isa Remaining ? timing.time : nothing
-            connect!(q, lots[i] => stage_node[stage], Transfer(amount; remaining))
+            at = timing isa At ? timing.time : nothing
+            connect!(q, lots[i] => stage_node[stage], Transfer(amount; remaining, at))
         end
     end
 
