@@ -225,6 +225,33 @@ end
     @test ibu(r2[:beer]) ≈ ibu(res[:beer]) rtol = 1e-2
 end
 
+@testset "Water" begin
+    # a water agent added to the mash, and an acid to the sparge of its mash step
+    r = sample_recipe("real", "SpargeAcidification.json")
+    q = quietly(() -> Quiver(r))
+    @test successors(q, :gypsum) == [:mash] && successors(q, :lactic) == [:grain_bed_1]
+    @test isempty(solids(q[:gypsum].initial))
+    @test liquor(q[:gypsum].initial).minerals.calcium ≈ ions(Gypsum(), 10u"g", 1u"L").calcium * 1u"L"
+    res = brew(q)
+    @test 5.0 < quietly(() -> mash_ph(res[:mash])) < 5.7                 # with the gypsum
+    @test residual_alkalinity(res[:grain_bed_1]) < 0u"mg/L"              # the acidified sparge
+    @test conserved(res, q)
+
+    # the water additions give the profile of the water
+    r = sample_recipe("generic", "recipes.json")
+    q = quietly(() -> Quiver(r))
+    p = profile(q[:strike_water].initial)
+    @test p.calcium ≈ 275u"mg/L" && p.bicarbonate ≈ 270u"mg/L" && p.sulfate ≈ 610u"mg/L"
+    @test profile(q[:sparge_water_1].initial).calcium ≈ 275u"mg/L"
+
+    # the water agents by name
+    @test BrewQuiver._water_agent("Gypsum (CaSO4)").salt isa Gypsum
+    @test BrewQuiver._water_agent("Calcium Chloride").salt isa CalciumChloride
+    @test BrewQuiver._water_agent("Lactic Acid 80%").acid.strength ≈ 0.8
+    @test BrewQuiver._water_agent("Phosphoric acid 85%").acid.density ≈ 1.685u"g/mL"
+    @test BrewQuiver._water_agent("Irish moss") === nothing
+end
+
 @testset "Equipment" begin
     r = sample_recipe("converted", "RRSummerBitter.json")
     large, small = document("real", "EquipmentSet.json").equipments

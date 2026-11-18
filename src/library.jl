@@ -191,7 +191,8 @@ function _record(f::Fermentable, s)
     return BJ.FermentableType{_BJI, _BJT}(name = f.name, type = _KINDS[f.kind],
         yield = (fine_grind = BJ.PercentType{_BJI, _BJT}(100f.yield * u"percent"),),
         color = BJ.ColorType{_BJI, _BJT}(f.color),
-        moisture = BJ.PercentType{_BJI, _BJT}(100f.moisture * u"percent"), inventory = inv)
+        moisture = BJ.PercentType{_BJI, _BJT}(100f.moisture * u"percent"), inventory = inv,
+        di_ph = f.di_ph === nothing ? nothing : (unit = "pH", value = f.di_ph))
 end
 function _record(h::Hop, s)
     inv = s isa Union{KgQ, LQ} ? (amount = _bj_inventory(s),) : nothing

@@ -88,3 +88,17 @@ sol = solve!(q, :fermentor => gravity => 1.052u"sg", :wort => ibu => 35u"IBU",
              vary = [Amount(:pale, :crystal), Amount(:goldings), Amount(:sparge_water),
                      Amount(:priming_sugar)])
 display(sol); println()
+
+# the water: a profile for the brewing water, gypsum in the mash, and the mash pH estimated
+# before the mash rest (crystal malts need their distilled water pH: here 4.7)
+tap = WaterProfile(calcium = 30u"mg/L", magnesium = 8u"mg/L", sodium = 12u"mg/L",
+                   chloride = 25u"mg/L", sulfate = 30u"mg/L", bicarbonate = 120u"mg/L")
+q[:strike_water] = water(volume(q[:strike_water].initial); temperature = 75u"°C", profile = tap)
+q[:crystal] = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L", di_ph = 4.7) =>
+              only(solids(q[:crystal].initial)).amount
+add!(q, :gypsum, Salt(Gypsum()) => 4u"g")
+connect!(q, :gypsum => :mash)
+res = brew(q)
+println("\nMash water: ", profile(res[:mash]), ", residual alkalinity ",
+        round(u"mg/L", residual_alkalinity(res[:mash]); digits = 1), " as CaCO₃")
+println("Estimated mash pH: ", round(mash_ph(res[:mash]); digits = 2))

@@ -155,6 +155,25 @@ struct Contents
 end
 Contents(l::Liquor = zero(Liquor)) = Contents(l, AbstractSolid[])
 Contents(p::Pair{<:AbstractIngredient}) = Contents(zero(Liquor), AbstractSolid[Portion(p.first, p.second)])
+
+# salts and acids are held dissolved: their ions, the alkalinity they add or take, and the
+# mass of everything else (other species, water of crystallization, the acid)
+function Contents(p::Pair{<:Salt, <:Unitful.Mass})
+    m = uconvert(u"mg", float(p.second))
+    i = ions(p.first.salt, m, 1u"L")
+    c(x) = x * 1u"L"
+    known = c(i.calcium) + c(i.magnesium) + c(i.sodium) + c(i.chloride) + c(i.sulfate)
+    return Contents(Liquor(; minerals = Minerals(; calcium = c(i.calcium), magnesium = c(i.magnesium),
+        sodium = c(i.sodium), chloride = c(i.chloride), sulfate = c(i.sulfate),
+        alkalinity = c(i.alkalinity), other = m - known)))
+end
+function Contents(p::Pair{<:Acid, <:Union{Unitful.Mass, Unitful.Volume}})
+    a = p.first.acid
+    m = p.second isa Unitful.Mass ? uconvert(u"mg", float(p.second)) : uconvert(u"mg", float(p.second) * a.density)
+    meq = acid_milliequivalents(a, m / a.density)
+    return Contents(Liquor(; water = (1 - a.strength) * m,
+        minerals = Minerals(; alkalinity = -meq * _EQ_CACO3 * u"mg", other = a.strength * m)))
+end
 Contents(c::Contents) = c
 
 """
@@ -178,7 +197,8 @@ The mass of everything in `contents`: the liquor (with its iso-alpha acids and C
 solids, except those given as counts. It is conserved by the quiver, up to what the
 transformations release (evaporated water, CO₂).
 """
-total_mass(l::Liquor) = mass(l) + uconvert(u"kg", l.isoalpha) + uconvert(u"kg", l.co2)
+total_mass(l::Liquor) = mass(l) + uconvert(u"kg", l.isoalpha) + uconvert(u"kg", l.co2) +
+                       uconvert(u"kg", mineral_mass(l.minerals))
 total_mass(c::Contents) = total_mass(c.liquor) + sum(solid_mass, c.solids; init = 0.0u"kg")
 
 """

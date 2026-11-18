@@ -20,8 +20,44 @@ const CO2_PER_VOLS = 1.977u"g/L"         # density of CO₂ at 0 °C and 1 atm (
 const ETHANOL_PER_CO2 = 46.068 / 44.0095 # equimolar ethanol and CO₂ in alcoholic fermentation
 
 """
+    Minerals(; calcium = 0u"mg", magnesium = 0u"mg", sodium = 0u"mg", chloride = 0u"mg",
+               sulfate = 0u"mg", alkalinity = 0u"mg", other = 0u"mg")
+
+The minerals dissolved in a liquor, as conserved quantities: the masses of calcium,
+magnesium, sodium, chloride and sulfate, the alkalinity as a mass of CaCO₃ (the equivalents
+of bicarbonate, carbonate and hydroxide, less those of the acids added; it can be negative),
+and the mass of the other species dissolved (bicarbonate, carbonate, hydroxide, acids, water
+of crystallization), so that the mass of the salts and acids added is conserved. They are
+mixed with `+` and split with `*` by a fraction, with the liquor. See [`WaterProfile`](@ref).
+"""
+struct Minerals
+    calcium::MgQ
+    magnesium::MgQ
+    sodium::MgQ
+    chloride::MgQ
+    sulfate::MgQ
+    alkalinity::MgQ
+    other::MgQ
+end
+_mg(x) = uconvert(u"mg", float(x))
+Minerals(; calcium = 0u"mg", magnesium = 0u"mg", sodium = 0u"mg", chloride = 0u"mg",
+         sulfate = 0u"mg", alkalinity = 0u"mg", other = 0u"mg") =
+    Minerals(_mg(calcium), _mg(magnesium), _mg(sodium), _mg(chloride), _mg(sulfate),
+             _mg(alkalinity), _mg(other))
+Base.zero(::Type{Minerals}) = Minerals()
+Base.iszero(m::Minerals) = all(iszero(getfield(m, f)) for f in fieldnames(Minerals))
+Base.:+(a::Minerals, b::Minerals) = Minerals((getfield(a, f) + getfield(b, f) for f in fieldnames(Minerals))...)
+Base.:*(x::Real, m::Minerals) = Minerals((x * getfield(m, f) for f in fieldnames(Minerals))...)
+Base.isapprox(a::Minerals, b::Minerals; rtol = 1e-8, atol = 1e-10) =
+    all(isapprox(ustrip(u"mg", getfield(a, f)), ustrip(u"mg", getfield(b, f)); rtol, atol)
+        for f in fieldnames(Minerals))
+
+# the mass of the dissolved species (the alkalinity is counted in `other`)
+mineral_mass(m::Minerals) = m.calcium + m.magnesium + m.sodium + m.chloride + m.sulfate + m.other
+
+"""
     Liquor(; water = 0u"kg", extract = 0u"kg", alcohol = 0u"kg", isoalpha = 0u"mg",
-             color = 0.0, co2 = 0u"g", temperature = 20u"°C")
+             color = 0.0, co2 = 0u"g", temperature = 20u"°C", minerals = Minerals())
 
 The state of a liquid (water, wort, beer, ...), given by its conserved quantities:
 
@@ -31,7 +67,8 @@ The state of a liquid (water, wort, beer, ...), given by its conserved quantitie
 - `isoalpha`: mass of iso-alpha acids;
 - `color`: color units, as `lb × °L` (malt color units times volume in gal);
 - `co2`: mass of dissolved CO₂;
-- `temperature`.
+- `temperature`;
+- `minerals`: the [`Minerals`](@ref) dissolved.
 
 Liquors are mixed with `+` and split with `*` by a fraction. Derived quantities:
 [`volume`](@ref), [`gravity`](@ref), [`original_gravity`](@ref), `real_extract`,
@@ -46,23 +83,66 @@ struct Liquor
     color::Float64
     co2::GQ
     temperature::CQ
+    minerals::Minerals
 end
 
 _kg(x::Unitful.Mass) = uconvert(u"kg", float(x))
 _kg(x::Unitful.Volume) = uconvert(u"kg", float(x) * BrewingFormulas.WATER_DENSITY_20C)
 
 function Liquor(; water = 0u"kg", extract = 0u"kg", alcohol = 0u"kg", isoalpha = 0u"mg",
-                color::Real = 0.0, co2 = 0u"g", temperature = 20u"°C")
+                color::Real = 0.0, co2 = 0u"g", temperature = 20u"°C",
+                minerals::Minerals = Minerals())
     return Liquor(_kg(water), _kg(extract), _kg(alcohol), uconvert(u"mg", float(isoalpha)),
-                  float(color), uconvert(u"g", float(co2)), uconvert(u"°C", float(temperature)))
+                  float(color), uconvert(u"g", float(co2)), uconvert(u"°C", float(temperature)),
+                  minerals)
 end
 
 """
-    water(volume; temperature = 20u"°C")
+    WaterProfile(; calcium = 0u"mg/L", magnesium = 0u"mg/L", sodium = 0u"mg/L",
+                   chloride = 0u"mg/L", sulfate = 0u"mg/L", bicarbonate = 0u"mg/L")
 
-A liquor of pure water with the given `volume` at 20 °C.
+The concentrations of the main ions of a water (in mg/L or ppm), e.g. a water report or a
+classic brewing water. See [`water`](@ref) and [`profile`](@ref).
 """
-water(volume::Unitful.Volume; temperature = 20u"°C") = Liquor(; water = volume, temperature)
+struct WaterProfile
+    calcium::typeof(1.0u"mg/L")
+    magnesium::typeof(1.0u"mg/L")
+    sodium::typeof(1.0u"mg/L")
+    chloride::typeof(1.0u"mg/L")
+    sulfate::typeof(1.0u"mg/L")
+    bicarbonate::typeof(1.0u"mg/L")
+end
+_mgL(x::Unitful.Quantity) = dimension(x) == dimension(u"mg/L") ? uconvert(u"mg/L", float(x)) :
+                            uconvert(u"mg/L", float(x), DensityConcentration())
+_mgL(x::Real) = iszero(x) ? 0.0u"mg/L" :
+    throw(ArgumentError("give the concentration $x with its unit, e.g. mg/L or ppm"))
+WaterProfile(; calcium = 0u"mg/L", magnesium = 0u"mg/L", sodium = 0u"mg/L", chloride = 0u"mg/L",
+             sulfate = 0u"mg/L", bicarbonate = 0u"mg/L") =
+    WaterProfile(_mgL(calcium), _mgL(magnesium), _mgL(sodium), _mgL(chloride), _mgL(sulfate),
+                 _mgL(bicarbonate))
+
+# the mg of CaCO₃ per mEq, and the bicarbonate per alkalinity as CaCO₃ (both from
+# BrewingFormulas, so that the conversions are exact inverses)
+const _EQ_CACO3 = 1 / milliequivalents(1.0u"mg/L")
+const _HCO3_PER_ALK = 1 / ustrip(u"mg/L", alkalinity(1.0u"mg/L"))
+
+# the minerals of a `volume` of water of the profile `p`
+function Minerals(p::WaterProfile, volume::Unitful.Volume)
+    v = uconvert(u"L", float(volume))
+    return Minerals(; calcium = p.calcium * v, magnesium = p.magnesium * v, sodium = p.sodium * v,
+                    chloride = p.chloride * v, sulfate = p.sulfate * v,
+                    alkalinity = alkalinity(p.bicarbonate) * v, other = p.bicarbonate * v)
+end
+
+"""
+    water(volume; temperature = 20u"°C", profile = nothing)
+
+A liquor of water with the given `volume` at 20 °C, pure or with the ions of a
+[`WaterProfile`](@ref).
+"""
+water(volume::Unitful.Volume; temperature = 20u"°C", profile::Union{Nothing, WaterProfile} = nothing) =
+    Liquor(; water = volume, temperature,
+           minerals = profile === nothing ? Minerals() : Minerals(profile, volume))
 
 """
     wort(volume, gravity; temperature = 20u"°C", eq = SugarGravityQuad())
@@ -77,7 +157,8 @@ function wort(volume::Unitful.Volume, gravity; temperature = 20u"°C",
 end
 
 Base.zero(::Type{Liquor}) = Liquor()
-Base.iszero(l::Liquor) = iszero(mass(l)) && iszero(l.isoalpha) && iszero(l.co2) && iszero(l.color)
+Base.iszero(l::Liquor) = iszero(mass(l)) && iszero(l.isoalpha) && iszero(l.co2) && iszero(l.color) &&
+                        iszero(l.minerals)
 
 """
     mass(liquor)
@@ -95,13 +176,14 @@ function Base.:+(a::Liquor, b::Liquor)
         (ustrip(u"°C", a.temperature) * ma + ustrip(u"°C", b.temperature) * mb) / (ma + mb) * u"°C"
     end
     return Liquor(a.water + b.water, a.extract + b.extract, a.alcohol + b.alcohol,
-                  a.isoalpha + b.isoalpha, a.color + b.color, a.co2 + b.co2, t)
+                  a.isoalpha + b.isoalpha, a.color + b.color, a.co2 + b.co2, t,
+                  a.minerals + b.minerals)
 end
 
 function Base.:*(f::Real, l::Liquor)
     f ≥ 0 || throw(DomainError(f, "a liquor can only be scaled by a nonnegative fraction"))
     return Liquor(f * l.water, f * l.extract, f * l.alcohol, f * l.isoalpha, f * l.color,
-                  f * l.co2, l.temperature)
+                  f * l.co2, l.temperature, f * l.minerals)
 end
 Base.:*(l::Liquor, f::Real) = f * l
 
@@ -111,14 +193,16 @@ Base.:*(l::Liquor, f::Real) = f * l
 The `liquor` at another `temperature`.
 """
 with_temperature(l::Liquor, t::Unitful.Temperature) =
-    Liquor(l.water, l.extract, l.alcohol, l.isoalpha, l.color, l.co2, uconvert(u"°C", float(t)))
+    Liquor(l.water, l.extract, l.alcohol, l.isoalpha, l.color, l.co2, uconvert(u"°C", float(t)),
+           l.minerals)
 
 function Base.isapprox(a::Liquor, b::Liquor; rtol = 1e-8, atol = 1e-10)
     m(x, y, u) = isapprox(ustrip(u, x), ustrip(u, y); rtol, atol)
     return m(a.water, b.water, u"kg") && m(a.extract, b.extract, u"kg") &&
            m(a.alcohol, b.alcohol, u"kg") && m(a.isoalpha, b.isoalpha, u"mg") &&
            isapprox(a.color, b.color; rtol, atol) && m(a.co2, b.co2, u"g") &&
-           m(a.temperature, b.temperature, u"°C")
+           m(a.temperature, b.temperature, u"°C") &&
+           isapprox(a.minerals, b.minerals; rtol, atol)
 end
 
 # Balling: original, real and apparent extracts in °P, as plain numbers.

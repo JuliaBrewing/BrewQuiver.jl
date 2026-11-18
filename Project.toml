@@ -1,6 +1,6 @@
 name = "BrewQuiver"
 uuid = "118187b7-b799-44b0-b9bb-0e3bc43a37c1"
-version = "0.0.10"
+version = "0.0.11"
 authors = ["Ricardo Rosa <rmsrosa@gmail.com>"]
 
 [deps]
@@ -18,7 +18,7 @@ UnitfulBrewing = {rev = "main", url = "https://github.com/JuliaBrewing/UnitfulBr
 
 [compat]
 BeerJSON = "0.0.1"
-BrewingFormulas = "0.1.1"
+BrewingFormulas = "0.1.2"
 Graphs = "1.15.0"
 MetaGraphsNext = "0.8.0"
 Unitful = "1.29.0"
