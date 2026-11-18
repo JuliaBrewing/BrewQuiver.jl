@@ -738,6 +738,83 @@ end
     @test only(timeline(q)[:rested => :kettle]).stop == 65u"minute"
 end
 
+@testset "Hop stands, decoctions and dry hops" begin
+    minute = u"minute"
+    models = DEFAULT_MODELS
+    w = Contents(wort(25u"L", 1.050u"sg"))
+    citra = Hop("Citra"; alpha = 12u"percent")
+    lot(t) = BrewQuiver.with_timing(Contents(citra => 50u"g"), t)
+    after(b, t) = first(transform(b, w + lot(t), models))
+
+    # a hop stand: the hops keep isomerizing, at the relative rate of its temperature
+    stand = Boil(stand = 20minute, stand_temperature = 80u"°C")
+    @test duration(stand) == 80minute && duration(Boil()) == 60minute
+    @test ibu(after(Boil(), Remaining(0minute))) == 0u"IBU"
+    flameout = after(stand, Remaining(0minute))
+    @test ibu(flameout) > 0u"IBU"
+    @test liquor(flameout).temperature ≈ 80u"°C"
+    @test ibu(after(Boil(stand = 20minute, stand_temperature = 95u"°C"), Remaining(0minute))) > ibu(flameout)
+    @test ibu(after(stand, Remaining(60minute))) > ibu(after(Boil(), Remaining(60minute)))
+    # boiled for f × 20 minutes: as a hop boiled that long
+    f = isomerization_factor(80u"°C")
+    @test ibu(flameout) ≈ ibu(after(Boil(), Remaining(f * 20minute))) rtol = 1e-6
+    # added 10 minutes into the stand: 10 minutes of stand
+    @test ibu(after(stand, At(70minute))) ≈ ibu(after(Boil(stand = 10minute), Remaining(0minute))) rtol = 1e-6
+    @test sprint(show, stand) == "Boil(60.0 min, stand 20.0 min at 80.0 °C)"
+
+    # in the timeline, the timings count within the boil, not the stand
+    q = single_batch()
+    add!(q, :whirlpool_hops, citra => 40u"g")
+    connect!(q, :whirlpool_hops => :kettle, Transfer(20u"g"; remaining = 0minute))
+    connect!(q, :whirlpool_hops => :kettle, Transfer(20u"g"; at = 70minute))
+    q[:kettle => :wort] = Boil(evaporation = 4u"L/hr", stand = 20minute)
+    t = timeline(q)
+    @test [x.start for x in t[:goldings => :kettle]] == [60minute, 110minute]
+    @test [x.start for x in t[:whirlpool_hops => :kettle]] == [120minute, 130minute]
+    @test t[:wort].ready == 140minute
+    res = brew(q)
+    @test ibu(res[:wort]) > ibu(brew(single_batch())[:wort])
+    @test conserved(res, q)
+
+    # a decoction: a part of the mash is boiled and returned, raising it to the next rest
+    q = Quiver()
+    add!(q, :malt, pale => 5u"kg")
+    add!(q, :strike, water(15u"L"; temperature = 55u"°C"))
+    add!(q, :mash, :mash_1, :mash_2_in, :mash_2; vessel = :mashtun)
+    add!(q, :decoction, :decoction_boiled; vessel = :kettle)
+    connect!(q, [:strike, :malt] => :mash)
+    connect!(q, :mash => :mash_1, MashRest(temperature = 50u"°C", time = 20minute))
+    fraction = BrewQuiver._decoction_fraction(50u"°C", 65u"°C")
+    @test fraction ≈ 15 / 50
+    connect!(q, :mash_1 => :decoction, Transfer(fraction))
+    connect!(q, :mash_1 => :mash_2_in)
+    connect!(q, :decoction => :decoction_boiled, Boil(time = 15minute, evaporation = 0u"L/hr"))
+    connect!(q, :decoction_boiled => :mash_2_in)
+    connect!(q, :mash_2_in => :mash_2, MashRest(temperature = 65u"°C", time = 60minute))
+    res = brew(q)
+    @test liquor(res[:mash_2_in]).temperature ≈ 65u"°C"                # back at the next rest
+    @test grist(res[:decoction]) ≈ fraction * 5u"kg"
+    @test conserved(res, q)
+    t = timeline(q)
+    @test t[:mash_2].ready == 20minute + 15minute + 60minute
+    @test isempty(overlaps(t))
+
+    # dry hops: their timing in the fermentation, and the beer they keep when racked
+    q = single_batch()
+    add!(q, :dry_hops, citra => 100u"g")
+    connect!(q, :dry_hops => :fermentor, Transfer(; remaining = 3u"d"))
+    q[:beer => :bottling] = Drain(retain = 1u"L", hop_absorption = 5u"L/kg")
+    res = brew(q)
+    @test volume(leftover(res, :beer)) ≈ 1u"L" + 0.1u"kg" * 5u"L/kg"
+    @test any(s -> s isa Portion{Hop}, solids(leftover(res, :beer)))
+    @test ibu(res[:beer]) ≈ ibu(brew(single_batch())[:beer])       # no bitterness from dry hops
+    @test only(timeline(q)[:dry_hops => :fermentor]).start == 120minute + 11u"d"
+    @test conserved(res, q)
+    equip!(q, :fermentor, Vessel(hop_absorption = 4u"L/kg"))
+    q[:beer => :bottling] = Drain(retain = 1u"L")
+    @test volume(leftover(brew(q), :beer)) ≈ 1u"L" + 0.1u"kg" * 4u"L/kg"
+end
+
 include("beerjson.jl")
 
 end

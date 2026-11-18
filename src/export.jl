@@ -36,10 +36,13 @@ end
 # the BeerJSON timing of an addition to a stage (see `_timing` for the import)
 function _bj_timing(stage, timing, t)
     kw = Dict{Symbol, Any}(:use => _USES[stage])
-    if stage === :boil
-        total = t isa Boil ? t.time : 0.0u"minute"        # (a Chill: at the end of the boil)
-        # (counting back from the end of the boil)
-        kw[:time] = _timetype(duration_in(timing, total))
+    if stage === :boil && t isa Boil
+        # the time in the boil, counting back from its end, and the steep in the stand
+        boil, stand = _boil_times(timing, t)
+        kw[:time] = _timetype(boil)
+        iszero(stand) || (kw[:duration] = _timetype(stand))
+    elseif stage === :boil
+        kw[:time] = _timetype(0u"minute")                # (a Chill: at the end of the boil)
     elseif timing isa At
         kw[:time] = _timetype(timing.time)
     elseif timing isa Remaining
@@ -163,9 +166,21 @@ function recipe(res::BrewResult, q::Quiver, product::Symbol; name::AbstractStrin
                 temps[k] = something(water_temperature(bed), temps[k])
             end
         end
+        # the decoctions: the mash boiled with its grain and returned before a rest
+        function decocted(n)
+            for p in predecessors(q, n), d in predecessors(q, p)
+                any(t -> t isa Boil, q[d => p]) && grist(res[d]) > 0u"kg" &&
+                    return a[d] * mash_volume(volume(res[d]), grist(res[d]))
+            end
+            return nothing
+        end
+        decoctions = [decocted(x[1]) for x in chain]
         steps = [BJ.MashStepType{_BJI, _BJT}(
-                     name = k == 1 ? "Mash in" : "Rest $k", type = k == 1 ? "infusion" : "temperature",
-                     amount = iszero(rest_water[k]) ? nothing : BJ.VolumeType{_BJI, _BJT}(rest_water[k]),
+                     name = k == 1 ? "Mash in" : decoctions[k] === nothing ? "Rest $k" : "Decoction $k",
+                     type = k == 1 ? "infusion" : decoctions[k] !== nothing ? "decoction" :
+                            iszero(rest_water[k]) ? "temperature" : "infusion",
+                     amount = decoctions[k] !== nothing ? BJ.VolumeType{_BJI, _BJT}(decoctions[k]) :
+                              iszero(rest_water[k]) ? nothing : BJ.VolumeType{_BJI, _BJT}(rest_water[k]),
                      infuse_temperature = infuse[k] === nothing ? nothing :
                                           BJ.TemperatureType{_BJI, _BJT}(infuse[k]),
                      step_temperature = BJ.TemperatureType{_BJI, _BJT}(x[2].temperature),
@@ -182,12 +197,29 @@ function recipe(res::BrewResult, q::Quiver, product::Symbol; name::AbstractStrin
     end
 
     # the boil
-    boils = _serving(Boil, q, a)
+    # (the boils of decoctions, with grain, are part of the mash)
+    boils = [x for x in _serving(Boil, q, a) if iszero(grist(res[x[1]]))]
     b = _dominant(boils, x -> x[3] * ustrip(u"L", volume(res[x[1]])))
-    boil = b === nothing ? nothing : BJ.BoilProcedureType{_BJI, _BJT}(
-        name = "Boil",
-        pre_boil_size = BJ.VolumeType{_BJI, _BJT}(sum(x[3] * volume(res[x[1]]) for x in boils)),
-        boil_time = _timetype(b[2].time))
+    boil = nothing
+    if b !== nothing
+        T(x) = BJ.TemperatureType{_BJI, _BJT}(x)
+        bsteps = [BJ.BoilStepType{_BJI, _BJT}(name = "Boil", start_temperature = T(100u"°C"),
+                                              end_temperature = T(100u"°C"), step_time = _timetype(b[2].time))]
+        iszero(b[2].stand) || push!(bsteps, BJ.BoilStepType{_BJI, _BJT}(
+            name = "Stand", start_temperature = T(100u"°C"), end_temperature = T(b[2].stand_temperature),
+            step_time = _timetype(b[2].stand)))
+        # the chilling that follows
+        w = only(d for d in successors(q, b[1]))
+        for (d, _, c) in _outgoing(q, w)
+            c isa Chill && !iszero(c.time) && push!(bsteps, BJ.BoilStepType{_BJI, _BJT}(
+                name = "Chill", start_temperature = T(liquor(res[w]).temperature),
+                end_temperature = T(c.temperature), step_time = _timetype(c.time)))
+        end
+        boil = BJ.BoilProcedureType{_BJI, _BJT}(
+            name = "Boil",
+            pre_boil_size = BJ.VolumeType{_BJI, _BJT}(sum(x[3] * volume(res[x[1]]) for x in boils)),
+            boil_time = _timetype(b[2].time), boil_steps = bsteps)
+    end
 
     # the fermentation, the batch size and the efficiency
     ferments = _serving(Ferment, q, a)

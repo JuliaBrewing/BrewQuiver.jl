@@ -107,6 +107,7 @@ function Base.show(io::IO, d::Drain)
     print(io, "Drain(")
     parts = String[]
     d.absorption === nothing || push!(parts, string(_r(d.absorption, 2), " L/kg absorbed"))
+    d.hop_absorption === nothing || push!(parts, string(_r(d.hop_absorption, 2), " L/kg absorbed by hops"))
     d.retain === nothing || iszero(_r(d.retain, 2)) ||
         push!(parts, string(_r(d.retain, 2), " L retained"))
     d.duration === nothing || iszero(d.duration) ||
@@ -118,13 +119,15 @@ Base.show(io::IO, m::MashRest) =
 _rate_string(r::typeof(1.0u"L/hr")) = string(_r(r, 2), " L/h")
 _rate_string(r::typeof(1.0u"hr^-1")) = string(_r(100r, 1), "%/h")
 Base.show(io::IO, b::Boil) = print(io, "Boil(", _r(b.time), " min",
-    b.evaporation === nothing ? "" : string(", ", _rate_string(b.evaporation)), ")")
+    b.evaporation === nothing ? "" : string(", ", _rate_string(b.evaporation)),
+    iszero(b.stand) ? "" : string(", stand ", _r(b.stand), " min at ", _r(b.stand_temperature), " °C"), ")")
 
 function _vessel_parts(v::Vessel)
     parts = String[]
     v.capacity === nothing || push!(parts, string(_r(v.capacity, 2), " L"))
     v.dead_space === nothing || push!(parts, string(_r(v.dead_space, 2), " L dead space"))
     v.absorption === nothing || push!(parts, string(_r(v.absorption, 2), " L/kg absorbed"))
+    v.hop_absorption === nothing || push!(parts, string(_r(v.hop_absorption, 2), " L/kg absorbed by hops"))
     v.evaporation === nothing || push!(parts, string("evaporating ", _rate_string(v.evaporation)))
     v.drain_rate === nothing || push!(parts, string("draining ", _r(v.drain_rate, 2), " L/min"))
     return parts

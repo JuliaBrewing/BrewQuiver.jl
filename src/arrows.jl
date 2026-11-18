@@ -94,28 +94,36 @@ function _fraction_of(m::KgQ, c, eq)
 end
 
 """
-    Drain(; absorption = nothing, retain = nothing, duration = nothing)
+    Drain(; absorption = nothing, retain = nothing, duration = nothing, hop_absorption = nothing)
 
 Moves the liquid of a node, leaving behind its solids, the liquid absorbed by the grain
-(`absorption` per mass of grain, see [`grist`](@ref)) and the volume `retain` (dead space,
-trub, yeast cake). It acts on what the transfers of amounts leave, before the transfers of
+(`absorption` per mass of grain, see [`grist`](@ref)), the liquid absorbed by the hops
+(`hop_absorption` per mass of hops, fresh or spent, e.g. after a dry hop) and the volume
+`retain` (dead space, trub, yeast cake). It acts on what the transfers of amounts leave, before the transfers of
 the rest; a node has at most one drain. Draining takes the time `duration` (see
 [`timeline`](@ref)).
 
 What is not given comes from the [`Vessel`](@ref) of the node, if it is equipped (see
 [`equip!`](@ref)): its grain absorption, its dead space, and its drain rate for the
-duration; or else 1.0 L/kg of absorption, nothing retained and no time.
+duration; or else 1.0 L/kg of grain absorption, no hop absorption, nothing retained and no
+time.
 """
 struct Drain <: AbstractArrow
     absorption::Union{Nothing, typeof(1.0u"L/kg")}
     retain::Union{Nothing, LQ}
     duration::Union{Nothing, MinQ}
+    hop_absorption::Union{Nothing, typeof(1.0u"L/kg")}
 end
 _maybe(f, ::Nothing) = nothing
 _maybe(f, x) = f(x)
-Drain(; absorption = nothing, retain = nothing, duration = nothing) =
+Drain(; absorption = nothing, retain = nothing, duration = nothing, hop_absorption = nothing) =
     Drain(_maybe(x -> uconvert(u"L/kg", float(x)), absorption),
-          _maybe(x -> uconvert(u"L", float(x)), retain), _maybe(_minutes, duration))
+          _maybe(x -> uconvert(u"L", float(x)), retain), _maybe(_minutes, duration),
+          _maybe(x -> uconvert(u"L/kg", float(x)), hop_absorption))
+
+# the mass of hops in `c`, fresh or spent
+_hops(c::Contents) = sum((s isa Portion{Hop, KgQ} ? s.amount : s isa HopMatter ? s.mass : 0.0u"kg"
+                          for s in c.solids); init = 0.0u"kg")
 
 const DEFAULT_ABSORPTION = 1.0u"L/kg"
 const DEFAULT_EVAPORATION = 4.0u"L/hr"
@@ -126,7 +134,8 @@ duration(a::Drain) = something(a.duration, 0.0u"minute")
 # split `c` into the liquid drained and what stays
 function _drain(d::Drain, c::Contents, eq)
     v = volume(c; eq)
-    kept = grist(c) * something(d.absorption, DEFAULT_ABSORPTION) + something(d.retain, 0.0u"L")
+    kept = grist(c) * something(d.absorption, DEFAULT_ABSORPTION) + something(d.retain, 0.0u"L") +
+           _hops(c) * something(d.hop_absorption, 0.0u"L/kg")
     # (all of it retained, up to rounding errors: nothing is drained)
     kept > v && isapprox(kept, v; rtol = 1e-9) && (kept = v)
     kept ≤ v || throw(ArgumentError(
@@ -186,44 +195,67 @@ function transform(m::MashRest, c::Contents, models)
 end
 
 """
-    Boil(; time = 60u"minute", evaporation = nothing)
+    Boil(; time = 60u"minute", evaporation = nothing, stand = 0u"minute",
+           stand_temperature = 80u"°C")
 
 Boils the contents of a node for `time`, evaporating water at the rate `evaporation` (a
 volume, or a fraction of the volume, per time; if not given, the evaporation rate of the
-[`Vessel`](@ref) of the node, or else 4 L/h) and driving off the CO₂. Soluble fermentables
-dissolve; each hop isomerizes during its own time in the boil (see [`AbstractTiming`](@ref)),
+[`Vessel`](@ref) of the node, or else 4 L/h) and driving off the CO₂, followed by a hop stand
+(or whirlpool) of `stand` at `stand_temperature`. Soluble fermentables dissolve; each hop
+isomerizes during its own time in the boil (see [`AbstractTiming`](@ref)) and in the stand,
 with the utilization model `models.bitterness` at the mean of the gravities before and
 after the boil and the factor [`HOP_FORM_FACTORS`](@ref) of its form, leaving its
-[`HopMatter`](@ref).
+[`HopMatter`](@ref). A time in the stand counts as `isomerization_factor(stand_temperature)`
+times as much boil, by the isomerization rate of BrewingFormulas.
+
+The timing of the hops counts from the boil: [`Remaining`](@ref) is the time left in the
+boil, before the stand, and [`At`](@ref) a time from the start of the boil, so that a hop
+added `At(time + 10u"minute")` stands for the last `stand - 10u"minute"`. The boil and the
+stand take `time + stand` (see [`duration`](@ref)), and the wort is left at
+`stand_temperature` after a stand.
 """
 struct Boil <: AbstractTransformation
     time::MinQ
     evaporation::Union{Nothing, typeof(1.0u"L/hr"), typeof(1.0u"hr^-1")}
+    stand::MinQ
+    stand_temperature::CQ
 end
 
 _rate(r::Unitful.VolumeFlow) = uconvert(u"L/hr", float(r))
 _rate(r::Unitful.Frequency) = uconvert(u"hr^-1", float(r))
 
-Boil(; time = 60u"minute", evaporation = nothing) =
-    Boil(_minutes(time), _maybe(_rate, evaporation))
+Boil(; time = 60u"minute", evaporation = nothing, stand = 0u"minute",
+     stand_temperature = 80u"°C") =
+    Boil(_minutes(time), _maybe(_rate, evaporation), _minutes(stand), _temperature(stand_temperature))
+
+duration(b::Boil) = b.time + b.stand
+
+# the times of a hop in the boil and in the stand that follows
+function _boil_times(timing, b::Boil)
+    boil = duration_in(timing, b.time)
+    late = timing isa At ? max(zero(b.stand), timing.time - b.time) : zero(b.stand)
+    return boil, max(zero(b.stand), b.stand - late)
+end
 
 function transform(b::Boil, c::Contents, models)
     eq = models.gravity
     c = _dissolve_soluble(c)
     before = c.liquor
     rate = something(b.evaporation, DEFAULT_EVAPORATION)
-    evaporated = _kg(evaporated_volume(volume(before; eq), rate, b.time))
+    # (never more than the water there is)
+    evaporated = min(_kg(evaporated_volume(volume(before; eq), rate, b.time)), before.water)
     after = Liquor(before.water - evaporated, before.extract, before.alcohol, before.isoalpha,
                    before.color, 0.0u"g", 100.0u"°C")
     gavg = (gravity(before; eq) + gravity(after; eq)) / 2
     isoalpha = 0.0u"mg"
     rest = AbstractSolid[]
+    f = iszero(b.stand) ? 0.0 : isomerization_factor(b.stand_temperature)
     for s in c.solids
         if s isa Portion{Hop, KgQ}
             h = s.ingredient
+            boil, stand = _boil_times(s.timing, b)
             iso = isomerized_alpha_acids(models.bitterness, s.amount, h.alpha, gavg,
-                                         duration_in(s.timing, b.time);
-                                         factor = hop_form_factor(h), eq)
+                                         boil + f * stand; factor = hop_form_factor(h), eq)
             isoalpha += iso
             push!(rest, HopMatter(s.amount - uconvert(u"kg", iso)))
         else
@@ -231,6 +263,7 @@ function transform(b::Boil, c::Contents, models)
         end
     end
     after += Liquor(; isoalpha, temperature = 100u"°C")
+    iszero(b.stand) || (after = with_temperature(after, b.stand_temperature))
     return Contents(after, rest), _released(evaporated, before.co2)
 end
 

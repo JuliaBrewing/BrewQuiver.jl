@@ -85,6 +85,25 @@ shares of its lots: `recipe(res, q, product)`, `recipes(res, q)`, and
 `write_beerjson(path, res, q)` for a BeerJSON document. A recipe exported from a quiver and
 imported back (with the equipment of its kettle) brews to the same wort and beer.
 
+## Step mashes, decoctions, hop stands and dry hops
+
+- **Step mashes** are chains of `MashRest`s in the mash tun, with infusions of water before
+  them; the first rest converts the grain.
+- **Decoctions** take a part of the mash (`Transfer(fraction)`) to the kettle, boil it
+  (`Boil`) and return it before the next rest, which it brings to temperature by the
+  mixing of the quiver.
+- **Hop stands** (whirlpools) follow the boil: `Boil(time = 60u"minute", stand = 20u"minute",
+  stand_temperature = 80u"°C")`. The hops keep isomerizing during the stand at the rate of
+  its temperature relative to boiling (`isomerization_factor` of BrewingFormulas), and a
+  hop added `At(70u"minute")` stands for the last 10 minutes.
+- **Dry hops** are additions to the fermentor with a timing (`Remaining(3u"d")` or
+  `At(2u"d")`); they add no bitterness, and keep the beer they absorb when racked, with
+  `hop_absorption` on the drain or the vessel.
+
+The BeerJSON importer builds them from the mash steps (infusions without amounts get the
+water that reaches their temperature, decoctions their boil and return) and the boil steps
+(a whirlpool, the chilling), and the export writes them back.
+
 ## Equipment
 
 A `Vessel` describes the equipment of a vessel: its capacity, its dead space (the liquid
