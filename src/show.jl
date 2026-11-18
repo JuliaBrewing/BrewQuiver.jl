@@ -41,6 +41,7 @@ _timing(t::Remaining) = string(" (", _r(t.time, 1), " min remaining)")
 _timing(t::At) = string(" (at ", _r(t.time, 1), " min)")
 _amount(a::KgQ) = _mass(a)
 _amount(a::Float64) = string(isinteger(a) ? Int(a) : round(a; digits = 3), " ×")
+_amount(a::LQ) = string(_r(a, 2), " L")
 
 Base.show(io::IO, p::Portion) =
     print(io, _amount(p.amount), " ", p.ingredient.name, _timing(p.timing))

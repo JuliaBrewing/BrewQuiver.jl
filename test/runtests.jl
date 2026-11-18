@@ -4,6 +4,7 @@ using UnitfulBrewing
 using BrewingFormulas
 using BrewQuiver
 using BeerJSON: BeerJSON
+using Logging: NullLogger, with_logger
 
 const pale = Fermentable("Pale ale malt"; yield = 80u"percent", color = 3u"°L")
 const crystal = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L")
@@ -891,6 +892,81 @@ end
     shown = sprint(show, MIME"text/plain"(), solve!(single_batch(), :fermentor => gravity => 1.05u"sg";
                                                     vary = Amount(:pale)))
     @test occursin("amount of :pale", shown) && occursin("gravity(:fermentor)", shown)
+end
+
+@testset "Library and inventory" begin
+    samples = joinpath(pkgdir(BeerJSON), "test", "samples")
+    lib = Library((joinpath(samples, f) for f in ("real/FermentableRecord.json",
+        "real/HopRecordWithAllFields.json", "real/YeastWithMorePopularFields.json",
+        "real/CrystalMaltSpecialtyGrain.json"))...)
+    @test keys(lib) == ["Crystal 40 L", "German Ale", "Lex Luthor Hops", "Pale 2-row Malt", "Super Hops"]
+    @test lib["Crystal 40 L"] isa Fermentable && lib["Crystal 40 L"].moisture == 0.04
+    @test lib["German Ale"].attenuation ≈ 0.75 && lib["German Ale"].form === :liquid
+    @test lib["Super Hops"].form === :leaf
+    @test stock(lib, "Super Hops") ≈ uconvert(u"kg", 2u"oz")
+    @test stock(lib, "Lex Luthor Hops") ≈ uconvert(u"L", 2u"floz")
+    @test stock(lib, "Crystal 40 L") === nothing
+    @test lookup(lib, "hops") == ["Lex Luthor Hops", "Super Hops"]
+    @test_throws KeyError lib["Nothing"]
+    @test_logs (:warn, r"no attenuation") Library(joinpath(samples, "real/YeastWithRequiredFieldsOnly.json"))
+
+    # a library by hand, with the stock of the single batch
+    lib = Library()
+    for (i, s) in ((pale, 10u"kg"), (crystal, 0.5u"kg"), (goldings, 100u"g"), (ale, 2),
+                   (dextrose, 1u"kg"))
+        push!(lib, i; stock = s)
+    end
+    @test_throws ArgumentError stock!(lib, "Crystal 60", "plenty")
+    q = single_batch()
+    res = brew(q)
+    need = requirements(res, q)
+    @test need["Pale ale malt"] ≈ 4.5u"kg" && need["Crystal 60"] ≈ 0.3u"kg"
+    @test need["East Kent Goldings"] ≈ 50u"g" && need["English ale"] == 1.0
+    @test need["Corn sugar"] ≈ 110u"g"
+    @test isempty(shortages(lib, res, q))
+    stock!(lib, "Pale ale malt", 4u"kg")
+    short = only(shortages(lib, res, q))
+    @test short.name == "Pale ale malt" && short.needed ≈ 4.5u"kg" && short.available ≈ 4u"kg"
+    # what remains on the shelf is not used
+    q2 = single_batch()
+    q2[:goldings] = goldings => 80u"g"
+    @test requirements(brew(q2), q2)["East Kent Goldings"] ≈ 50u"g"
+    # ingredients not in the library, or without stock; counts and volumes are not compared
+    lib2 = Library()
+    push!(lib2, pale; stock = 10u"kg")
+    push!(lib2, ale; stock = 0.1u"L")
+    @test Set(x.name for x in shortages(lib2, res, q)) == Set(["Crystal 60", "East Kent Goldings", "Corn sugar"])
+
+    # brewing takes from the stock
+    stock!(lib, "Pale ale malt", 10u"kg")
+    consume!(lib, res, q)
+    @test stock(lib, "Pale ale malt") ≈ 5.5u"kg" && stock(lib, "English ale") == 1.0
+    @test stock(lib, "East Kent Goldings") ≈ 50u"g"
+    stock!(lib, "Crystal 60", 0.1u"kg")
+    @test_logs (:warn, r"Crystal 60") consume!(lib, res, q)
+    @test iszero(stock(lib, "Crystal 60"))
+
+    # written to BeerJSON and read back
+    path = write_beerjson(tempname() * ".json", lib)
+    back = Library(path)
+    @test keys(back) == keys(lib)
+    @test back["Pale ale malt"] == pale && back["East Kent Goldings"] == goldings
+    @test back["English ale"].attenuation ≈ ale.attenuation
+    @test stock(back, "Pale ale malt") ≈ stock(lib, "Pale ale malt")
+    @test stock(back, "English ale") === nothing                  # (a count: not written)
+    @test occursin("in stock 1.0 kg", sprint(show, MIME"text/plain"(), back))
+
+    # a recipe completed by the library: moisture, and attenuation where the recipe has none
+    generic = only(BeerJSON.readjson(BeerJSON.BeerJSONParser, joinpath(samples, "generic/recipes.json")).beerjson.recipes)
+    lib = Library()
+    push!(lib, Fermentable("pale ale"; yield = 78u"percent", color = 3u"°L", moisture = 6u"percent"))
+    push!(lib, Culture("US-05"; attenuation = 81u"percent", form = :dry))
+    q = with_logger(NullLogger()) do
+        Quiver(generic; library = lib)
+    end
+    @test only(solids(q[:pale_ale].initial)).ingredient.moisture == 0.06
+    @test only(solids(q[:us_05].initial)).ingredient.attenuation ≈ 0.81
+    @test only(solids(q[:burlington_ale].initial)).ingredient.attenuation ≈ 0.75   # the default
 end
 
 include("beerjson.jl")

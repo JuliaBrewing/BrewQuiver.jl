@@ -72,6 +72,26 @@ boil rate. With `BrewhouseEfficiency()`, the conversion of the mash is adjusted 
 efficiency of the recipe; with `NoCalibration()` (the default), the efficiency follows from
 the processes. See [`examples/beerjson_recipe.jl`](examples/beerjson_recipe.jl).
 
+## Ingredient library and inventory
+
+A `Library` holds ingredients by name, with what is in stock, loaded from the fermentable,
+hop and culture records of BeerJSON files (with their inventory) or built with `push!`.
+
+```julia
+lib = Library("my_ingredients.json")
+add!(q, :pale, lib["Pale Ale Malt"] => 4.5u"kg")
+lookup(lib, "crystal")              # the names containing "crystal"
+
+res = brew(q)
+requirements(res, q)                # what the brew uses of each ingredient
+shortages(lib, res, q)              # what the stock lacks for it
+consume!(lib, res, q)               # takes it from the stock
+write_beerjson("my_ingredients.json", lib)
+```
+
+`Quiver(recipe; library = lib)` completes the additions of a recipe with the records of the
+library of the same name: the moisture of fermentables, and the attenuation of cultures.
+
 ## Provenance and export
 
 `shares(res, q, product)` gives the share of each lot (ingredient or water) used for a
