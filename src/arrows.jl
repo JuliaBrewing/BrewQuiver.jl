@@ -94,28 +94,39 @@ function _fraction_of(m::KgQ, c, eq)
 end
 
 """
-    Drain(; absorption = 1.0u"L/kg", retain = 0u"L", duration = 0u"minute")
+    Drain(; absorption = nothing, retain = nothing, duration = nothing)
 
 Moves the liquid of a node, leaving behind its solids, the liquid absorbed by the grain
 (`absorption` per mass of grain, see [`grist`](@ref)) and the volume `retain` (dead space,
 trub, yeast cake). It acts on what the transfers of amounts leave, before the transfers of
 the rest; a node has at most one drain. Draining takes the time `duration` (see
 [`timeline`](@ref)).
+
+What is not given comes from the [`Vessel`](@ref) of the node, if it is equipped (see
+[`equip!`](@ref)): its grain absorption, its dead space, and its drain rate for the
+duration; or else 1.0 L/kg of absorption, nothing retained and no time.
 """
 struct Drain <: AbstractArrow
-    absorption::typeof(1.0u"L/kg")
-    retain::LQ
-    duration::MinQ
+    absorption::Union{Nothing, typeof(1.0u"L/kg")}
+    retain::Union{Nothing, LQ}
+    duration::Union{Nothing, MinQ}
 end
-Drain(; absorption = 1.0u"L/kg", retain = 0u"L", duration = 0u"minute") =
-    Drain(uconvert(u"L/kg", float(absorption)), uconvert(u"L", float(retain)), _minutes(duration))
+_maybe(f, ::Nothing) = nothing
+_maybe(f, x) = f(x)
+Drain(; absorption = nothing, retain = nothing, duration = nothing) =
+    Drain(_maybe(x -> uconvert(u"L/kg", float(x)), absorption),
+          _maybe(x -> uconvert(u"L", float(x)), retain), _maybe(_minutes, duration))
 
-duration(a::Union{Transfer, Drain}) = a.duration
+const DEFAULT_ABSORPTION = 1.0u"L/kg"
+const DEFAULT_EVAPORATION = 4.0u"L/hr"
+
+duration(a::Transfer) = a.duration
+duration(a::Drain) = something(a.duration, 0.0u"minute")
 
 # split `c` into the liquid drained and what stays
 function _drain(d::Drain, c::Contents, eq)
     v = volume(c; eq)
-    kept = grist(c) * d.absorption + d.retain
+    kept = grist(c) * something(d.absorption, DEFAULT_ABSORPTION) + something(d.retain, 0.0u"L")
     # (all of it retained, up to rounding errors: nothing is drained)
     kept > v && isapprox(kept, v; rtol = 1e-9) && (kept = v)
     kept ≤ v || throw(ArgumentError(
@@ -175,10 +186,11 @@ function transform(m::MashRest, c::Contents, models)
 end
 
 """
-    Boil(; time = 60u"minute", evaporation = 4u"L/hr")
+    Boil(; time = 60u"minute", evaporation = nothing)
 
 Boils the contents of a node for `time`, evaporating water at the rate `evaporation` (a
-volume, or a fraction of the volume, per time) and driving off the CO₂. Soluble fermentables
+volume, or a fraction of the volume, per time; if not given, the evaporation rate of the
+[`Vessel`](@ref) of the node, or else 4 L/h) and driving off the CO₂. Soluble fermentables
 dissolve; each hop isomerizes during its own time in the boil (see [`AbstractTiming`](@ref)),
 with the utilization model `models.bitterness` at the mean of the gravities before and
 after the boil and the factor [`HOP_FORM_FACTORS`](@ref) of its form, leaving its
@@ -186,19 +198,21 @@ after the boil and the factor [`HOP_FORM_FACTORS`](@ref) of its form, leaving it
 """
 struct Boil <: AbstractTransformation
     time::MinQ
-    evaporation::Union{typeof(1.0u"L/hr"), typeof(1.0u"hr^-1")}
+    evaporation::Union{Nothing, typeof(1.0u"L/hr"), typeof(1.0u"hr^-1")}
 end
 
 _rate(r::Unitful.VolumeFlow) = uconvert(u"L/hr", float(r))
 _rate(r::Unitful.Frequency) = uconvert(u"hr^-1", float(r))
 
-Boil(; time = 60u"minute", evaporation = 4u"L/hr") = Boil(_minutes(time), _rate(evaporation))
+Boil(; time = 60u"minute", evaporation = nothing) =
+    Boil(_minutes(time), _maybe(_rate, evaporation))
 
 function transform(b::Boil, c::Contents, models)
     eq = models.gravity
     c = _dissolve_soluble(c)
     before = c.liquor
-    evaporated = _kg(evaporated_volume(volume(before; eq), b.evaporation, b.time))
+    rate = something(b.evaporation, DEFAULT_EVAPORATION)
+    evaporated = _kg(evaporated_volume(volume(before; eq), rate, b.time))
     after = Liquor(before.water - evaporated, before.extract, before.alcohol, before.isoalpha,
                    before.color, 0.0u"g", 100.0u"°C")
     gavg = (gravity(before; eq) + gravity(after; eq)) / 2

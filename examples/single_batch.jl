@@ -28,26 +28,34 @@ add!(q, :kettle, :wort, :chilled; vessel = :kettle)
 add!(q, :fermentor, :beer; vessel = :fermentor)
 add!(q, :bottling, :bottles; vessel = :bottles)
 
+# the equipment of the vessels: the arrows leaving their stages take from it what they do
+# not give (grain absorption, dead space, evaporation, drain time)
+equip!(q, :mashtun, Vessel(name = "Cooler", capacity = 36u"L", absorption = 1.0u"L/kg",
+                           dead_space = 0.5u"L", drain_rate = 1u"L/minute"))
+equip!(q, :kettle, Vessel(name = "Kettle", capacity = 36u"L", evaporation = 4u"L/hr",
+                          dead_space = 1u"L", drain_rate = 1.5u"L/minute"))
+equip!(q, :fermentor, Vessel(name = "Bucket", capacity = 30u"L", dead_space = 1u"L"))
+
 # mash and batch sparge
 connect!(q, [:strike_water, :pale, :crystal] => :mash)
 connect!(q, :mash => :rested, MashRest(temperature = 67u"°C", time = 60u"minute"))
-connect!(q, :rested => :kettle, Drain(absorption = 1.0u"L/kg", duration = 15u"minute"))   # first runnings
+connect!(q, :rested => :kettle, Drain())                           # first runnings
 connect!(q, :rested => :grain_bed)                                 # grain and absorbed wort
 connect!(q, :sparge_water => :grain_bed)
-connect!(q, :grain_bed => :kettle, Drain(absorption = 1.0u"L/kg", duration = 20u"minute")) # second runnings
+connect!(q, :grain_bed => :kettle, Drain())                        # second runnings
 
 # boil, with the hops arriving during it
 connect!(q, :goldings => :kettle, Transfer(30u"g"; remaining = 60u"minute"))
 connect!(q, :goldings => :kettle, Transfer(20u"g"; remaining = 10u"minute"))
-connect!(q, :kettle => :wort, Boil(time = 60u"minute", evaporation = 4u"L/hr"))
+connect!(q, :kettle => :wort, Boil(time = 60u"minute"))
 connect!(q, :wort => :chilled, Chill(temperature = 20u"°C", time = 25u"minute"))
 
 # knock-out, fermentation, bottling
-connect!(q, :chilled => :fermentor, Drain(retain = 1u"L", duration = 15u"minute"))   # trub and hops stay
+connect!(q, :chilled => :fermentor, Drain())                       # trub and hops stay
 connect!(q, :yeast => :fermentor)
 connect!(q, :fermentor => :beer, Ferment(temperature = 20u"°C", time = 14u"d"))
 connect!(q, [:priming_sugar] => :bottling)
-connect!(q, :beer => :bottling, Drain(retain = 1u"L"))
+connect!(q, :beer => :bottling, Drain())                           # the yeast cake stays
 connect!(q, :bottling => :bottles, Prime(sugar = CornSugar()))
 
 display(q); println("\n")
@@ -69,3 +77,4 @@ println()
 tl = timeline(q; start = 8u"hr")
 display(tl); println("\n")
 vesselchart(tl; to = 13u"hr")
+println("\nOverfilled vessels: ", isempty(overfilled(res, q)) ? "none" : overfilled(res, q))

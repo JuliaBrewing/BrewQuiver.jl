@@ -688,6 +688,56 @@ end
     @test_throws ArgumentError vesselchart(devnull, s; from = 2hr, to = 1hr)
 end
 
+@testset "Equipment" begin
+    v = Vessel(name = "Kettle", capacity = 30u"L", dead_space = 1.5u"L", evaporation = 5u"L/hr",
+               drain_rate = 1.5u"L/minute")
+    @test v.capacity == 30u"L" && v.drain_rate == 1.5u"L/minute" && v.absorption === nothing
+    @test sprint(show, v) == "Vessel(\"Kettle\"; 30.0 L, 1.5 L dead space, evaporating 5.0 L/h, draining 1.5 L/min)"
+    @test Drain().absorption === nothing && Boil().evaporation === nothing
+
+    # the arrows take from the vessel what they do not give
+    q = single_batch()
+    for (s, d) in ((:rested, :kettle), (:grain_bed, :kettle), (:chilled, :fermentor))
+        q[s => d] = Drain()
+    end
+    q[:kettle => :wort] = Boil(time = 60u"minute")
+    equip!(q, :mashtun, Vessel(capacity = 25u"L", dead_space = 0.5u"L", absorption = 0.9u"L/kg",
+                               drain_rate = 1u"L/minute"))
+    equip!(q, :kettle, v)
+    @test equipment(q, :kettle) === v && equipment(q, :fermentor) === nothing
+    res = brew(q)
+    @test volume(leftover(res, :grain_bed)) ≈ 4.8u"kg" * 0.9u"L/kg" + 0.5u"L"
+    @test volume(res[:kettle]) - volume(res[:wort]) ≈ 5u"L" rtol = 1e-2       # evaporation
+    @test volume(leftover(res, :chilled)) ≈ 1.5u"L"                            # dead space
+    @test conserved(res, q)
+    @test isempty(overfilled(res, q))
+
+    # what the arrows give wins
+    q[:chilled => :fermentor] = Drain(retain = 0.5u"L")
+    @test volume(leftover(brew(q), :chilled)) ≈ 0.5u"L"
+
+    # the capacity, with the grain displaced in the mash
+    equip!(q, :mashtun, Vessel(capacity = 18u"L"))
+    o = overfilled(brew(q), q)
+    @test [x.node for x in o] == [:mash, :rested, :grain_bed]
+    @test o[1].volume ≈ mash_volume(16u"L", 4.8u"kg") && o[1].capacity == 18u"L"
+
+    # the drains take the time of the drain rates
+    equip!(q, :mashtun, Vessel(drain_rate = 1u"L/minute"))
+    res = brew(q)
+    t = timeline(q)
+    first = volume(only(res[:rested => :kettle]).moved)
+    @test only(t[:rested => :kettle]).stop - 60u"minute" ≈ uconvert(u"minute", first / 1u"L/minute")
+    drained = sum(volume(only(res[n => :kettle]).moved) for n in (:rested, :grain_bed))
+    @test t[:kettle].ready ≈ 60u"minute" + drained / 1u"L/minute"
+    knockout = volume(only(res[:chilled => :fermentor]).moved)
+    @test only(t[:chilled => :fermentor]).stop - only(t[:chilled => :fermentor]).start ≈
+          knockout / 1.5u"L/minute"
+    @test timeline(res, q)[:fermentor] == t[:fermentor]
+    q[:rested => :kettle] = Drain(duration = 5u"minute")            # what the arrow gives wins
+    @test only(timeline(q)[:rested => :kettle]).stop == 65u"minute"
+end
+
 include("beerjson.jl")
 
 end

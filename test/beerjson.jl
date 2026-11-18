@@ -151,8 +151,14 @@ end
     @test volume(leftover(res, :chilled)) ≈ 7.57u"L" rtol = 1e-3     # the kettle loss
     @test volume(res[:kettle]) ≈ quantity(r.boil.pre_boil_size) rtol = 1e-6
     q = quietly(() -> Quiver(r; equipment = small))
-    @test q[:kettle => :wort][1].evaporation ≈ 2.04u"L/hr" rtol = 1e-3
-    @test q[:mash_2 => :kettle][1].retain ≈ 0.95u"L" rtol = 1e-3     # the dead space
+    @test equipment(q, :kettle).evaporation ≈ 2.04u"L/hr" rtol = 1e-3
+    @test equipment(q, :mashtun).dead_space ≈ 0.95u"L" rtol = 1e-3   # the dead space
+    @test equipment(q, :mashtun).capacity ≈ 18.93u"L" rtol = 1e-3
+    @test startswith(equipment(q, :kettle).name, "7-9 gallon brewpot")
+    res = brew(q)
+    @test volume(leftover(res, :grain_bed_1)) ≈ grist(res[:grain_bed_1]) * 1u"L/kg" + 0.95u"L" rtol = 1e-6
+    # the 5 gallon cooler is too small for this mash
+    @test any(o -> o.vessel == :mashtun, overfilled(res, q))
     @test conserved(brew(q), q)
 end
 

@@ -106,17 +106,31 @@ _arrow_string(t::Transfer, alone) = alone && t.amount === nothing ?
 function Base.show(io::IO, d::Drain)
     print(io, "Drain(")
     parts = String[]
-    d.absorption == Drain().absorption ||
-        push!(parts, string(_r(d.absorption, 2), " L/kg absorbed"))
-    iszero(_r(d.retain, 2)) || push!(parts, string(_r(d.retain, 2), " L retained"))
-    iszero(d.duration) || push!(parts, string("taking ", _clock(d.duration)))
+    d.absorption === nothing || push!(parts, string(_r(d.absorption, 2), " L/kg absorbed"))
+    d.retain === nothing || iszero(_r(d.retain, 2)) ||
+        push!(parts, string(_r(d.retain, 2), " L retained"))
+    d.duration === nothing || iszero(d.duration) ||
+        push!(parts, string("taking ", _clock(d.duration)))
     print(io, join(parts, ", "), ")")
 end
 Base.show(io::IO, m::MashRest) =
     print(io, "MashRest(", _r(m.temperature), " °C, ", _r(m.time), " min)")
 _rate_string(r::typeof(1.0u"L/hr")) = string(_r(r, 2), " L/h")
 _rate_string(r::typeof(1.0u"hr^-1")) = string(_r(100r, 1), "%/h")
-Base.show(io::IO, b::Boil) = print(io, "Boil(", _r(b.time), " min, ", _rate_string(b.evaporation), ")")
+Base.show(io::IO, b::Boil) = print(io, "Boil(", _r(b.time), " min",
+    b.evaporation === nothing ? "" : string(", ", _rate_string(b.evaporation)), ")")
+
+function _vessel_parts(v::Vessel)
+    parts = String[]
+    v.capacity === nothing || push!(parts, string(_r(v.capacity, 2), " L"))
+    v.dead_space === nothing || push!(parts, string(_r(v.dead_space, 2), " L dead space"))
+    v.absorption === nothing || push!(parts, string(_r(v.absorption, 2), " L/kg absorbed"))
+    v.evaporation === nothing || push!(parts, string("evaporating ", _rate_string(v.evaporation)))
+    v.drain_rate === nothing || push!(parts, string("draining ", _r(v.drain_rate, 2), " L/min"))
+    return parts
+end
+Base.show(io::IO, v::Vessel) = print(io, "Vessel(", isempty(v.name) ? "" : string(repr(v.name),
+    isempty(_vessel_parts(v)) ? "" : "; "), join(_vessel_parts(v), ", "), ")")
 Base.show(io::IO, k::Chill) = print(io, "Chill(", _r(k.temperature), " °C",
     iszero(k.time) ? "" : string(", ", _r(k.time), " min"), ")")
 Base.show(io::IO, f::Ferment) = print(io, "Ferment(", _r(f.temperature), " °C, ", _r(f.time), " d",
@@ -157,6 +171,8 @@ function Base.show(io::IO, ::MIME"text/plain", q::Quiver)
     print(io, "Quiver with ", length(ns), " nodes and ", length(as), " arrows")
     for (title, members) in _groups(ns, n -> vessel(q, n), n -> isempty(predecessors(q, n)))
         print(io, "\n  ", title)
+        v = startswith(title, "[") ? equipment(q, Symbol(title[2:end-1])) : nothing
+        v === nothing || print(io, "  ", v)
         for n in members
             print(io, "\n    :", n)
             node = q[n]
