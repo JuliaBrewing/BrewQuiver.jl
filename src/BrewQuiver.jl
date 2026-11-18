@@ -47,6 +47,7 @@ include("brew.jl")
 include("provenance.jl")
 include("beerjson.jl")
 include("export.jl")
+include("schedule.jl")
 include("show.jl")
 
 # liquors
@@ -79,5 +80,8 @@ export recipe, recipes, write_beerjson
 
 # provenance
 export attribution, shares
+
+# schedule (with a method of `Base.schedule` for quivers)
+export duration, Schedule, Interval, makespan, overlaps, gantt
 
 end # module

@@ -32,12 +32,24 @@ NamedTuple `(water, co2)` of masses (negative for what it took in).
 """
 function transform end
 
+_minutes(t) = uconvert(u"minute", float(t))
+
+"""
+    duration(arrow::AbstractArrow)
+
+How long the `arrow` takes: the `duration` of a transfer or a drain, the `time` of a
+transformation. A new arrow type with a duration implements this method; the default is
+no time.
+"""
+duration(::AbstractArrow) = 0.0u"minute"
+duration(t::AbstractTransformation) = hasfield(typeof(t), :time) ? _minutes(t.time) : 0.0u"minute"
+
 const Released = @NamedTuple{water::KgQ, co2::KgQ}
 _released(water, co2) = (water = uconvert(u"kg", water), co2 = uconvert(u"kg", co2))
 released_nothing() = _released(0.0u"kg", 0.0u"kg")
 
 """
-    Transfer(amount = nothing; remaining = nothing, at = nothing)
+    Transfer(amount = nothing; remaining = nothing, at = nothing, duration = 0u"minute")
 
 Moves a uniform part of the contents of a node: a volume (of the liquor), a mass, a fraction
 (a percentage or a plain number from 0 to 1), or `nothing` for what is left by the other
@@ -45,11 +57,12 @@ arrows (shared equally among the transfers of the rest).
 
 The ingredients moved arrive with the timing `remaining` or `at` (see [`Remaining`](@ref),
 [`At`](@ref)), e.g. `Transfer(20u"g"; remaining = 10u"minute")` for a hop with 10 minutes
-of boil left.
+of boil left. The transfer takes the time `duration` (see [`schedule`](@ref)).
 """
 struct Transfer <: AbstractArrow
     amount::Union{Nothing, Float64, LQ, KgQ}
     timing::Union{Nothing, AbstractTiming}
+    duration::MinQ
 end
 
 _transfer_amount(::Nothing) = nothing
@@ -61,11 +74,11 @@ _transfer_amount(x::Unitful.Mass) = uconvert(u"kg", float(x))
 _transfer_amount(x) = throw(ArgumentError("a transfer takes a volume, a mass, a fraction or " *
                                           "`nothing` (the rest), not $x"))
 
-function Transfer(amount = nothing; remaining = nothing, at = nothing)
+function Transfer(amount = nothing; remaining = nothing, at = nothing, duration = 0u"minute")
     remaining === nothing || at === nothing ||
         throw(ArgumentError("give either `remaining` or `at`, not both"))
     timing = remaining !== nothing ? Remaining(remaining) : at !== nothing ? At(at) : nothing
-    return Transfer(_transfer_amount(amount), timing)
+    return Transfer(_transfer_amount(amount), timing, _minutes(duration))
 end
 
 # the fraction of the contents `c` taken by the transfer
@@ -81,19 +94,23 @@ function _fraction_of(m::KgQ, c, eq)
 end
 
 """
-    Drain(; absorption = 1.0u"L/kg", retain = 0u"L")
+    Drain(; absorption = 1.0u"L/kg", retain = 0u"L", duration = 0u"minute")
 
 Moves the liquid of a node, leaving behind its solids, the liquid absorbed by the grain
 (`absorption` per mass of grain, see [`grist`](@ref)) and the volume `retain` (dead space,
 trub, yeast cake). It acts on what the transfers of amounts leave, before the transfers of
-the rest; a node has at most one drain.
+the rest; a node has at most one drain. Draining takes the time `duration` (see
+[`schedule`](@ref)).
 """
 struct Drain <: AbstractArrow
     absorption::typeof(1.0u"L/kg")
     retain::LQ
+    duration::MinQ
 end
-Drain(; absorption = 1.0u"L/kg", retain = 0u"L") =
-    Drain(uconvert(u"L/kg", float(absorption)), uconvert(u"L", float(retain)))
+Drain(; absorption = 1.0u"L/kg", retain = 0u"L", duration = 0u"minute") =
+    Drain(uconvert(u"L/kg", float(absorption)), uconvert(u"L", float(retain)), _minutes(duration))
+
+duration(a::Union{Transfer, Drain}) = a.duration
 
 # split `c` into the liquid drained and what stays
 function _drain(d::Drain, c::Contents, eq)
@@ -136,7 +153,6 @@ end
 _dissolve_soluble(c::Contents) = _dissolve(c, 1.0, soluble)
 
 _temperature(t) = uconvert(u"°C", float(t))
-_minutes(t) = uconvert(u"minute", float(t))
 
 """
     MashRest(; temperature = 67u"°C", time = 60u"minute", conversion = 95u"percent")
@@ -274,19 +290,21 @@ function transform(f::Ferment, c::Contents, models)
 end
 
 """
-    Prime(; sugar = CornSugar())
+    Prime(; sugar = CornSugar(), time = 14u"d")
 
 Bottle or keg conditioning: the soluble fermentables in the node (the priming sugar) are
 fully fermented, and their CO₂ stays dissolved. The CO₂ yield is that of `sugar`, an
 `AbstractPrimingSugar` of BrewingFormulas; equal numbers of moles of ethanol and CO₂ are
 produced, and the water balances the masses (the water of a monohydrate is released, the
 water of the hydrolysis of sucrose is taken). See [`priming_mass`](@ref) for the mass of
-sugar giving a carbonation level.
+sugar giving a carbonation level. The conditioning takes the given `time`.
 """
 struct Prime{S <: AbstractPrimingSugar} <: AbstractTransformation
     sugar::S
+    time::typeof(1.0u"d")
 end
-Prime(; sugar::AbstractPrimingSugar = CornSugar()) = Prime(sugar)
+Prime(; sugar::AbstractPrimingSugar = CornSugar(), time = 14u"d") =
+    Prime(sugar, uconvert(u"d", float(time)))
 
 function _prime(l::Liquor, s::KgQ, sugar)
     co2 = uconvert(u"g", co2_yield(sugar) * s)
@@ -325,15 +343,17 @@ function priming_mass(c::Contents, carbonation; sugar::AbstractPrimingSugar = Co
 end
 
 """
-    Carbonate(carbonation)
+    Carbonate(carbonation; time = 2u"d")
 
 Forced carbonation of the contents of a node to the `carbonation` level, with CO₂ from
-outside the quiver (released as a negative mass).
+outside the quiver (released as a negative mass), taking the given `time`.
 """
 struct Carbonate <: AbstractTransformation
     carbonation::typeof(1.0u"vols")
+    time::typeof(1.0u"d")
 end
-Carbonate(level::Unitful.Quantity) = Carbonate(uconvert(u"vols", float(level)))
+Carbonate(level::Unitful.Quantity; time = 2u"d") =
+    Carbonate(uconvert(u"vols", float(level)), uconvert(u"d", float(time)))
 
 function transform(k::Carbonate, c::Contents, models)
     l = c.liquor

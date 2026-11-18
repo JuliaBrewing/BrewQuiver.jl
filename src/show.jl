@@ -92,14 +92,16 @@ _timing_arg(::Nothing) = ""
 _timing_arg(t::Remaining) = string(", ", _r(t.time, 1), " min remaining")
 _timing_arg(t::At) = string(", at ", _r(t.time, 1), " min")
 
+_taking(d) = iszero(d) ? "" : string(", taking ", _clock(d))
+
 Base.show(io::IO, t::Transfer) =
-    print(io, "Transfer(", _amount_string(t.amount), _timing_arg(t.timing), ")")
+    print(io, "Transfer(", _amount_string(t.amount), _timing_arg(t.timing), _taking(t.duration), ")")
 
 # an arrow in the listing of a quiver: a transfer of the rest that is the only arrow leaving
 # its node takes all of it
 _arrow_string(a, alone) = sprint(show, a)
 _arrow_string(t::Transfer, alone) = alone && t.amount === nothing ?
-    string("Transfer(all", _timing_arg(t.timing), ")") : sprint(show, t)
+    string("Transfer(all", _timing_arg(t.timing), _taking(t.duration), ")") : sprint(show, t)
 
 function Base.show(io::IO, d::Drain)
     print(io, "Drain(")
@@ -107,6 +109,7 @@ function Base.show(io::IO, d::Drain)
     d.absorption == Drain().absorption ||
         push!(parts, string(_r(d.absorption, 2), " L/kg absorbed"))
     iszero(_r(d.retain, 2)) || push!(parts, string(_r(d.retain, 2), " L retained"))
+    iszero(d.duration) || push!(parts, string("taking ", _clock(d.duration)))
     print(io, join(parts, ", "), ")")
 end
 Base.show(io::IO, m::MashRest) =
@@ -118,8 +121,9 @@ Base.show(io::IO, k::Chill) = print(io, "Chill(", _r(k.temperature), " °C",
     iszero(k.time) ? "" : string(", ", _r(k.time), " min"), ")")
 Base.show(io::IO, f::Ferment) = print(io, "Ferment(", _r(f.temperature), " °C, ", _r(f.time), " d",
     f.attenuation === nothing ? "" : string(", ", _r(100f.attenuation), "%"), ")")
-Base.show(io::IO, p::Prime) = print(io, "Prime(", nameof(typeof(p.sugar)), ")")
-Base.show(io::IO, k::Carbonate) = print(io, "Carbonate(", _r(k.carbonation, 2), " vols)")
+Base.show(io::IO, p::Prime) = print(io, "Prime(", nameof(typeof(p.sugar)), ", ", _r(p.time), " d)")
+Base.show(io::IO, k::Carbonate) =
+    print(io, "Carbonate(", _r(k.carbonation, 2), " vols, ", _r(k.time), " d)")
 
 # quivers and results
 
