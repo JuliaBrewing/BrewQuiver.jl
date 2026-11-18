@@ -1,5 +1,7 @@
 # BrewQuiver
 
+[![CI](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml)
+
 The engine of the BrewQuiver brewing software, in pure Julia: the brewing process as a
 **quiver**, a directed acyclic graph whose nodes are processes (mash, boil, fermentation,
 packaging, blending, ...) and whose edges are transfers of liquors between them. Unlike a
@@ -8,7 +10,13 @@ mashes, or blending.
 
 This package is still **under development** and not yet registered. It builds on
 [UnitfulBrewing.jl](https://github.com/JuliaBrewing/UnitfulBrewing.jl) for the units and on
-BrewingFormulas.jl for the formulas.
+[BrewingFormulas.jl](https://github.com/JuliaBrewing/BrewingFormulas.jl) for the formulas,
+both taken from GitHub through the `[sources]` of `Project.toml` (Julia 1.11 or later):
+
+```julia
+using Pkg
+Pkg.add(url = "https://github.com/JuliaBrewing/BrewQuiver.jl")
+```
 
 ## Design
 
