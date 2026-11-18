@@ -90,3 +90,11 @@ println("\nThe stages of each vessel:")
 for (v, ns) in sort!(collect(vessels(q)))
     println("  ", rpad(v, 10), join(ns, " → "))
 end
+
+# the share of each lot in the ESB, and the four beers as BeerJSON recipes
+println("\nThe lots used for the ESB:")
+for (l, s) in sort!(collect(shares(res, q, :esb)); by = first)
+    println("  ", rpad(":$l", 12), round(100s; digits = 1), "% of ", q[l].initial)
+end
+path = write_beerjson(joinpath(tempdir(), "fullers.json"), res, q; author = "BrewQuiver")
+println("\nThe four recipes are in ", path)

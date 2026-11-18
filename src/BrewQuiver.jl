@@ -32,7 +32,7 @@ using Unitful
 using Unitful: @u_str
 using UnitfulBrewing
 using BrewingFormulas
-using BrewingFormulas: ABVModel, ColorModel, AbstractPrimingSugar, co2_yield
+using BrewingFormulas: ABVModel, ColorModel, AbstractPrimingSugar, co2_yield, Tinseth, Rager
 using Graphs: Graphs, DiGraph, has_path, rem_edge!, rem_vertex!
 import BeerJSON
 using MetaGraphsNext: MetaGraph, code_for, label_for, edge_labels, inneighbor_labels,
@@ -44,7 +44,9 @@ include("contents.jl")
 include("arrows.jl")
 include("quiver.jl")
 include("brew.jl")
+include("provenance.jl")
 include("beerjson.jl")
+include("export.jl")
 include("show.jl")
 
 # liquors
@@ -73,5 +75,9 @@ export products
 
 # BeerJSON
 export AbstractCalibration, NoCalibration, BrewhouseEfficiency, brewhouse_efficiency
+export recipe, recipes, write_beerjson
+
+# provenance
+export attribution, shares
 
 end # module

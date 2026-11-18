@@ -5,13 +5,13 @@ using Logging: NullLogger, with_logger
 
 const SAMPLES = joinpath(pkgdir(BeerJSON), "test", "samples")
 document(path...) = readjson(BeerJSONParser, joinpath(SAMPLES, path...)).beerjson
-recipe(path...) = only(document(path...).recipes)
+sample_recipe(path...) = only(document(path...).recipes)
 quietly(f) = with_logger(f, NullLogger())
 
 @testset "BeerJSON" begin
 
 @testset "Ingredients" begin
-    kolsh = recipe("converted", "Kolsh.json")
+    kolsh = sample_recipe("converted", "Kolsh.json")
     f = Fermentable(kolsh.ingredients.fermentable_additions[1])
     @test f.name == "Pilsner (2 Row) Ger" && f.kind === :grain
     potential = quantity(kolsh.ingredients.fermentable_additions[1].yield.potential)
@@ -20,15 +20,15 @@ quietly(f) = with_logger(f, NullLogger())
     @test f.moisture == 0.04
     @test Fermentable(kolsh.ingredients.fermentable_additions[1]; moisture = 0).moisture == 0
 
-    generic = recipe("generic", "recipes.json")
+    generic = sample_recipe("generic", "recipes.json")
     @test Fermentable(generic.ingredients.fermentable_additions[1]).yield ≈ 0.78   # fine grind
 
     # potentials such as 1038 sg are read as 1.038 sg
-    saison = recipe("real", "BrettDosedKegsSaison.json")
+    saison = sample_recipe("real", "BrettDosedKegsSaison.json")
     @test_logs (:warn, r"reading the potential 1038.0 sg as 1.038 sg") Fermentable(
         saison.ingredients.fermentable_additions[1])
 
-    honey = quietly(() -> Fermentable(recipe("real", "MedievalAle.json").ingredients.fermentable_additions[1]))
+    honey = quietly(() -> Fermentable(sample_recipe("real", "MedievalAle.json").ingredients.fermentable_additions[1]))
     @test honey.kind === :honey && honey.moisture == 0
 
     h = Hop(kolsh.ingredients.hop_additions[1])
@@ -46,7 +46,7 @@ quietly(f) = with_logger(f, NullLogger())
 end
 
 @testset "Quiver of a recipe" begin
-    r = recipe("converted", "Kolsh.json")
+    r = sample_recipe("converted", "Kolsh.json")
     q = quietly(() -> Quiver(r))
     res = brew(q)
 
@@ -73,7 +73,7 @@ end
     # rate and a kettle loss for the batch size
     for file in (("converted", "Londonpride.json"), ("converted", "RRSummerBitter.json"),
                  ("real", "CheaterHops.json"), ("generic", "recipes.json"))
-        r = recipe(file...)
+        r = sample_recipe(file...)
         q = quietly(() -> Quiver(r))
         res = brew(q)
         @test volume(res[:kettle]) ≈ quantity(r.boil.pre_boil_size) rtol = 1e-6
@@ -91,18 +91,18 @@ end
     # the gravities of the recipes that give them
     for (file, og) in ((("real", "BrettDosedKegsSaison.json"), 1.046u"sg"),
                        (("real", "MedievalAle.json"), 1.059u"sg"))
-        r = recipe(file...)
+        r = sample_recipe(file...)
         res = brew(quietly(() -> Quiver(r; calibration = BrewhouseEfficiency())))
         @test gravity(res[:fermentor]) ≈ og atol = 6e-3u"sg"
     end
 
     # the cultures take the attenuation of the original and final gravities of the recipe
-    saison = recipe("real", "BrettDosedKegsSaison.json")
+    saison = sample_recipe("real", "BrettDosedKegsSaison.json")
     res = brew(quietly(() -> Quiver(saison)))
     @test apparent_attenuation(res[:beer]) ≈ apparent_attenuation(1.046u"sg", 1.010u"sg")
 
     # dry hops given as boil additions longer than the boil
-    punk = recipe("converted", "punk-ipa-2010-current.json")
+    punk = sample_recipe("converted", "punk-ipa-2010-current.json")
     q = @test_logs (:warn, r"cultures without attenuation") (:warn, r"Chinook.*dry hop") match_mode = :any Quiver(punk)
     res = brew(q)
     dry = [s for s in solids(res[:fermentor]) if s isa Portion{Hop}]
@@ -129,11 +129,11 @@ end
     @test BrewQuiver._timing(nothing, :boil) === nothing
 
     # a dry hop added 2 days into the fermentation
-    q = quietly(() -> Quiver(recipe("generic", "recipes.json")))
+    q = quietly(() -> Quiver(sample_recipe("generic", "recipes.json")))
     @test only(q[:citra => :fermentor]).timing == At(2u"d")
 
     # dry hops added 3 days into the fermentation, and hops in the package without timing
-    q = quietly(() -> Quiver(recipe("real", "CheaterHops.json")))
+    q = quietly(() -> Quiver(sample_recipe("real", "CheaterHops.json")))
     @test only(q[:mosaic => :fermentor]).timing == At(3u"d")
     @test only(q[:mosaic => :packaging]).timing === nothing
     @test [a.timing for a in q[:columbus => :kettle]] ==
@@ -144,7 +144,7 @@ end
 end
 
 @testset "Equipment" begin
-    r = recipe("converted", "RRSummerBitter.json")
+    r = sample_recipe("converted", "RRSummerBitter.json")
     large, small = document("real", "EquipmentSet.json").equipments
     q = quietly(() -> Quiver(r; equipment = large))
     res = brew(q)
@@ -157,10 +157,10 @@ end
 end
 
 @testset "Unsupported" begin
-    @test_throws ArgumentError quietly(() -> Quiver(recipe("real", "SourMash.json")))
-    @test_throws ArgumentError quietly(() -> Quiver(recipe("real", "IrishMoss.json")))
+    @test_throws ArgumentError quietly(() -> Quiver(sample_recipe("real", "SourMash.json")))
+    @test_throws ArgumentError quietly(() -> Quiver(sample_recipe("real", "IrishMoss.json")))
     @test_logs (:warn, r"in the kettle, for a pre-boil volume") match_mode = :any Quiver(
-        recipe("real", "SpargeAcidification.json"))
+        sample_recipe("real", "SpargeAcidification.json"))
 end
 
 end
