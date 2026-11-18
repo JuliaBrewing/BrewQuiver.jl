@@ -1,76 +1,109 @@
-# The quiver: a directed acyclic graph whose nodes are processes and whose edges carry
-# transfers of liquors from an output port of a process to an input port of another.
+# The quiver: a directed acyclic multigraph whose nodes are the contents of vessels at the
+# stages of the brewing, and whose arrows are the processes between them.
 
 """
-    Transfer(from, to; amount = nothing, out_time = nothing, in_time = nothing)
+    Node
 
-A transfer of liquor from the output port `from` of a process to the input port `to` of
-another. The `amount` is a volume (at 20 °C), a fraction of the liquor at the port, or
-`nothing` for all that is left at the port after the other transfers (shared equally among
-the transfers with `nothing`). From an empty port, every transfer takes an empty liquor. The times `out_time` and `in_time` at which the liquor leaves
-and arrives are relative to the processes (not yet used in the calculations).
+A node of a [`Quiver`](@ref): its `initial` contents (the lots on the shelf, the water;
+empty for the stages filled by arrows) and the `vessel` it is in, if given.
 """
-struct Transfer
-    from::Symbol
-    to::Symbol
-    amount::Union{Nothing, Float64, LQ}
-    out_time::Union{Nothing, MinQ}
-    in_time::Union{Nothing, MinQ}
+struct Node
+    initial::Contents
+    vessel::Union{Nothing, Symbol}
 end
-
-_amount(::Nothing) = nothing
-_amount(x::Real) = (0 ≤ x ≤ 1 ? float(x) :
-                    throw(DomainError(x, "a fraction must be between 0 and 1")))
-_amount(x::Unitful.DimensionlessQuantity) = _amount(float(uconvert(NoUnits, x)))
-_amount(x::Unitful.Volume) = uconvert(u"L", float(x))
-_time(::Nothing) = nothing
-_time(x::Unitful.Time) = uconvert(u"minute", float(x))
-
-Transfer(from::Symbol, to::Symbol; amount = nothing, out_time = nothing, in_time = nothing) =
-    Transfer(from, to, _amount(amount), _time(out_time), _time(in_time))
 
 """
     Quiver()
 
-An empty quiver, the brewing process as a directed acyclic graph: its nodes, labelled by
-symbols, are processes ([`AbstractProcess`](@ref)), and its edges carry the
-[`Transfer`](@ref)s of liquors between them.
+An empty quiver: the brewing process as a directed acyclic graph whose nodes, labelled by
+symbols, are the [`Contents`](@ref) of vessels at the stages of the brewing, and whose
+arrows ([`AbstractArrow`](@ref)) are the processes between them: transfers, drains and
+transformations. Several arrows may join the same two nodes.
 
-Build it with [`add!`](@ref) and [`connect!`](@ref), replace a process with
-`q[label] = process`, and compute it with [`brew`](@ref).
+Build it with [`add!`](@ref) and [`connect!`](@ref), and compute it with [`brew`](@ref).
 """
 struct Quiver{G}
     graph::G
-    # the rank of each process in the order of construction, for a stable topological order
+    # the rank of each node in the order of construction, for a stable topological order
     # (the codes of the vertices change when a vertex is removed, so they can't be used)
     rank::Dict{Symbol, Int}
     added::Base.RefValue{Int}
 end
 
-Quiver() = Quiver(MetaGraph(DiGraph(); label_type = Symbol, vertex_data_type = AbstractProcess,
-                            edge_data_type = Vector{Transfer}, graph_data = nothing),
+Quiver() = Quiver(MetaGraph(DiGraph(); label_type = Symbol, vertex_data_type = Node,
+                            edge_data_type = Vector{AbstractArrow}, graph_data = nothing),
                   Dict{Symbol, Int}(), Ref(0))
 
 Base.haskey(q::Quiver, label::Symbol) = haskey(q.graph, label)
 Base.getindex(q::Quiver, label::Symbol) = q.graph[label]
+Base.getindex(q::Quiver, e::Pair{Symbol, Symbol}) = q.graph[e.first, e.second]
 
-function Base.setindex!(q::Quiver, p::AbstractProcess, label::Symbol)
-    if haskey(q, label)
-        _check_ports(q, label, p)
-    else
-        q.rank[label] = (q.added[] += 1)
+"""
+    vessel(q::Quiver, label)
+
+The vessel of the node `label`, or `nothing`.
+"""
+vessel(q::Quiver, label::Symbol) = q[label].vessel
+
+_set!(q::Quiver, label::Symbol, n::Node) =
+    (haskey(q, label) || (q.rank[label] = (q.added[] += 1)); q.graph[label] = n; q)
+
+_contents(x::Contents) = x
+_contents(x::Liquor) = Contents(x)
+_contents(x::Pair{<:AbstractIngredient}) = Contents(x)
+_contents(x) = throw(ArgumentError("the initial contents of a node are `Contents`, a liquor " *
+                                   "or `ingredient => amount`, not $x"))
+
+"""
+    add!(q::Quiver, label, initial; vessel = nothing)
+    add!(q::Quiver, labels::Symbol...; vessel = nothing)
+
+Adds to `q` a node with `initial` contents (a lot: a liquor such as `water(16u"L")`, or
+`ingredient => amount`), or empty nodes, to be filled by arrows, with the given `labels`.
+They are in `vessel`, if given.
+"""
+function add!(q::Quiver, label::Symbol, initial; vessel::Union{Nothing, Symbol} = nothing)
+    haskey(q, label) && throw(ArgumentError("there is already a node labelled :$label"))
+    return _set!(q, label, Node(_contents(initial), vessel))
+end
+function add!(q::Quiver, labels::Symbol...; vessel::Union{Nothing, Symbol} = nothing)
+    for l in labels
+        add!(q, l, Contents(); vessel)
     end
-    q.graph[label] = p
+    return q
+end
+
+"""
+    q[label] = initial
+
+Replaces the initial contents of the node `label`, keeping its vessel.
+"""
+function Base.setindex!(q::Quiver, initial, label::Symbol)
+    haskey(q, label) || throw(ArgumentError("there is no node labelled :$label; use `add!`"))
+    return _set!(q, label, Node(_contents(initial), vessel(q, label)))
+end
+
+"""
+    q[source => destination] = arrow
+
+Replaces the arrows from `source` to `destination` by `arrow`.
+"""
+function Base.setindex!(q::Quiver, a::AbstractArrow, e::Pair{Symbol, Symbol})
+    haskey(q.graph, e.first, e.second) ||
+        throw(ArgumentError("there is no arrow from :$(e.first) to :$(e.second); use `connect!`"))
+    _check_arrows(q, e.first, [a; [b for d in successors(q, e.first) if d != e.second
+                                   for b in q[e.first => d]]])
+    q.graph[e.first, e.second] = AbstractArrow[a]
     return q
 end
 
 """
     nodes(q::Quiver)
 
-The labels of the processes of `q`, in topological order.
+The labels of the nodes of `q`, in topological order.
 """
 function nodes(q::Quiver)
-    # Kahn's algorithm, taking the earliest added process among the ready ones, so that the
+    # Kahn's algorithm, taking the earliest added node among the ready ones, so that the
     # order is stable and follows the order of construction where the graph allows
     g = q.graph.graph
     rank(v) = q.rank[label_for(q.graph, v)]
@@ -89,96 +122,93 @@ function nodes(q::Quiver)
 end
 
 """
-    transfers(q::Quiver)
+    arrows(q::Quiver)
 
-All the transfers of `q`, as a vector of `(source, destination, transfer)`.
+All the arrows of `q`, as a vector of `(source, destination, arrow)`.
 """
-transfers(q::Quiver) = [(s, d, t) for (s, d) in edge_labels(q.graph) for t in q.graph[s, d]]
+arrows(q::Quiver) = [(s, d, a) for (s, d) in edge_labels(q.graph) for a in q.graph[s, d]]
 
 """
-    add!(q::Quiver, label::Symbol, p::AbstractProcess)
+    vessels(q::Quiver)
 
-Adds the process `p` to `q` with the given `label`.
+The nodes of each vessel, in topological order: the stages the vessel goes through.
 """
-function add!(q::Quiver, label::Symbol, p::AbstractProcess)
-    haskey(q, label) && throw(ArgumentError("there is already a process labelled :$label"))
-    q[label] = p
-    return q
-end
-
-_endpoint(x::Symbol, default) = (x, default)
-_endpoint(x::Tuple{Symbol, Symbol}, default) = x
-
-function _check_outport(q, node, port)
-    port in outports(q[node]) || throw(ArgumentError(
-        ":$node ($(nameof(typeof(q[node])))) has no output port :$port; " *
-        "its output ports are $(outports(q[node]))"))
-end
-
-function _check_inport(q, node, port)
-    port in inports(q[node]) || throw(ArgumentError(
-        ":$node ($(nameof(typeof(q[node])))) has no input port :$port; " *
-        "its input ports are $(inports(q[node]))"))
-end
-
-# when replacing the process of a node, its ports in use must remain
-function _check_ports(q, label, p)
-    for (s, d, t) in transfers(q)
-        s == label && t.from ∉ outports(p) && throw(ArgumentError(
-            "the new process for :$label has no output port :$(t.from), used by a transfer to :$d"))
-        d == label && t.to ∉ inports(p) && throw(ArgumentError(
-            "the new process for :$label has no input port :$(t.to), used by a transfer from :$s"))
+function vessels(q::Quiver)
+    v = Dict{Symbol, Vector{Symbol}}()
+    for n in nodes(q)
+        x = vessel(q, n)
+        x === nothing || push!(get!(v, x, Symbol[]), n)
     end
+    return v
+end
+
+# the arrows leaving a node: a transformation must be alone, and there is at most one drain
+function _check_arrows(q, label, as)
+    if any(a -> a isa AbstractTransformation, as) && length(as) > 1
+        throw(ArgumentError("a transformation must be the only arrow leaving :$label: it " *
+                            "turns all its contents into the next stage; transfer them first"))
+    end
+    count(a -> a isa Drain, as) ≤ 1 || throw(ArgumentError(
+        ":$label can have only one drain; drain into a node and transfer from it"))
 end
 
 """
-    connect!(q::Quiver, source => destination; amount = nothing, out_time = nothing, in_time = nothing)
+    connect!(q::Quiver, source => destination, arrow = Transfer())
+    connect!(q::Quiver, [sources...] => destination, arrow = Transfer())
 
-Adds a [`Transfer`](@ref) from `source` to `destination`, each either a label, for the
-default ports `:out` and `:in`, or a tuple `(label, port)`. E.g.
+Adds an `arrow` (a [`Transfer`](@ref), [`Drain`](@ref) or transformation) from the node
+`source` to the node `destination`, e.g.
 
 ```julia
-connect!(q, :boil => :fermentor)
-connect!(q, (:mashtun, :running2) => :boil2; amount = 20u"L")
+connect!(q, [:strike_water, :pale] => :mash)                  # transfer everything
+connect!(q, :goldings => :kettle, Transfer(20u"g"; remaining = 10u"minute"))
+connect!(q, :kettle => :wort, Boil(time = 60u"minute"))
 ```
 
-Transfers that would create a cycle are refused, keeping `q` acyclic.
+Arrows that would create a cycle are refused, keeping `q` acyclic.
 """
-function connect!(q::Quiver, p::Pair; amount = nothing, out_time = nothing, in_time = nothing)
-    (s, from) = _endpoint(p.first, :out)
-    (d, to) = _endpoint(p.second, :in)
+function connect!(q::Quiver, e::Pair{Symbol, Symbol}, a::AbstractArrow = Transfer())
+    s, d = e
     for n in (s, d)
-        haskey(q, n) || throw(ArgumentError("there is no process labelled :$n"))
+        haskey(q, n) || throw(ArgumentError("there is no node labelled :$n"))
     end
-    s == d && throw(ArgumentError("a process cannot transfer to itself"))
-    _check_outport(q, s, from)
-    _check_inport(q, d, to)
-    t = Transfer(from, to; amount, out_time, in_time)
+    s == d && throw(ArgumentError("an arrow from :$s to itself would be a cycle; " *
+                                  "transformations go to the next stage, a new node"))
+    _check_arrows(q, s, [a; [b for (_, _, b) in _outgoing(q, s)]])
     if haskey(q.graph, s, d)
-        push!(q.graph[s, d], t)
+        push!(q.graph[s, d], a)
     else
         has_path(q.graph.graph, code_for(q.graph, d), code_for(q.graph, s)) &&
-            throw(ArgumentError("a transfer from :$s to :$d would create a cycle"))
-        q.graph[s, d] = [t]
+            throw(ArgumentError("an arrow from :$s to :$d would create a cycle"))
+        q.graph[s, d] = AbstractArrow[a]
     end
     return q
 end
+function connect!(q::Quiver, e::Pair{<:AbstractVector{Symbol}, Symbol}, a::AbstractArrow = Transfer())
+    for s in e.first
+        connect!(q, s => e.second, a)
+    end
+    return q
+end
+
+_outgoing(q::Quiver, label::Symbol) =
+    [(d, i, a) for d in outneighbor_labels(q.graph, label) for (i, a) in enumerate(q.graph[label, d])]
 
 """
     disconnect!(q::Quiver, source => destination)
 
-Removes all the transfers from `source` to `destination`.
+Removes all the arrows from `source` to `destination`.
 """
-function disconnect!(q::Quiver, p::Pair{Symbol, Symbol})
-    haskey(q.graph, p.first, p.second) && rem_edge!(q.graph, code_for(q.graph, p.first),
-                                                    code_for(q.graph, p.second))
+function disconnect!(q::Quiver, e::Pair{Symbol, Symbol})
+    haskey(q.graph, e.first, e.second) &&
+        rem_edge!(q.graph, code_for(q.graph, e.first), code_for(q.graph, e.second))
     return q
 end
 
 """
     remove!(q::Quiver, label)
 
-Removes the process `label` and its transfers.
+Removes the node `label` and its arrows.
 """
 function remove!(q::Quiver, label::Symbol)
     if haskey(q, label)
@@ -191,7 +221,7 @@ end
 """
     predecessors(q::Quiver, label), successors(q::Quiver, label)
 
-The labels of the processes transferring to, or receiving from, the process `label`.
+The labels of the nodes with arrows to, or from, the node `label`.
 """
 predecessors(q::Quiver, label::Symbol) = collect(inneighbor_labels(q.graph, label))
 successors(q::Quiver, label::Symbol) = collect(outneighbor_labels(q.graph, label))
@@ -199,8 +229,8 @@ successors(q::Quiver, label::Symbol) = collect(outneighbor_labels(q.graph, label
 """
     descendants(q::Quiver, label)
 
-The labels of all the processes downstream of `label`, including itself, in topological
-order: those to recompute when `label` changes.
+The labels of all the nodes downstream of `label`, including itself, in topological order:
+those to recompute when `label` changes.
 """
 function descendants(q::Quiver, label::Symbol)
     c = code_for(q.graph, label)

@@ -1,48 +1,98 @@
-# Computing a quiver: the processes are evaluated in topological order, each mixing the
-# liquors arriving at its input ports and distributing its outputs along its transfers.
+# Computing a quiver: the nodes are evaluated in topological order, each gathering its
+# initial contents and what its incoming arrows bring, and passing them along its arrows.
 
 """
     NodeResult
 
-The result of a process in a brew: the liquors at its input ports (`inputs`), at its output
-ports (`outputs`), and what was left at each output port after the transfers (`leftovers`).
+The result of a node in a brew: its `contents` (the initial contents and all that arrived)
+and the `leftover`, what no arrow took (spent grain, trub, yeast cake, the products).
 """
 struct NodeResult
-    inputs::Dict{Symbol, Liquor}
-    outputs::Dict{Symbol, Liquor}
-    leftovers::Dict{Symbol, Liquor}
+    contents::Contents
+    leftover::Contents
 end
+
+"""
+    ArrowResult
+
+The result of an arrow in a brew: the contents it `moved` to its destination and what it
+`released` from the quiver, a NamedTuple `(water, co2)` of masses.
+"""
+struct ArrowResult
+    moved::Contents
+    released::Released
+end
+ArrowResult(moved::Contents) = ArrowResult(moved, released_nothing())
 
 """
     BrewResult
 
-The result of [`brew`](@ref): `res[label]` is the [`NodeResult`](@ref) of a process,
-`res[label, port]` the liquor at one of its output ports, and `res[source => destination]`
-the liquors transferred along an edge, in the order of the transfers.
+The result of [`brew`](@ref): `res[label]` is the [`Contents`](@ref) of a node,
+`res[source => destination]` the [`ArrowResult`](@ref)s of the arrows between two nodes, in
+their order. See also [`leftover`](@ref), [`leftovers`](@ref), [`released`](@ref) and
+[`products`](@ref).
 """
 struct BrewResult{M <: NamedTuple}
     nodes::Dict{Symbol, NodeResult}
-    flows::Dict{Tuple{Symbol, Symbol}, Vector{Liquor}}
+    arrows::Dict{Tuple{Symbol, Symbol}, Vector{ArrowResult}}
     order::Vector{Symbol}
     models::M
 end
 
-Base.getindex(r::BrewResult, label::Symbol) = r.nodes[label]
-Base.getindex(r::BrewResult, label::Symbol, port::Symbol) = r.nodes[label].outputs[port]
-Base.getindex(r::BrewResult, e::Pair{Symbol, Symbol}) = r.flows[(e.first, e.second)]
+Base.getindex(r::BrewResult, label::Symbol) = r.nodes[label].contents
+Base.getindex(r::BrewResult, e::Pair{Symbol, Symbol}) = r.arrows[(e.first, e.second)]
 Base.keys(r::BrewResult) = r.order
+
+"""
+    leftover(res::BrewResult, label)
+
+What was left in the node `label`, taken by no arrow.
+"""
+leftover(r::BrewResult, label::Symbol) = r.nodes[label].leftover
+
+"""
+    leftovers(res::BrewResult)
+
+The nonempty leftovers of all the nodes, as a `Dict` from label to contents: with what the
+arrows released (see [`released`](@ref)), they account for all the initial contents.
+"""
+leftovers(r::BrewResult) =
+    Dict(n => r.nodes[n].leftover for n in r.order if !iszero(r.nodes[n].leftover))
+
+"""
+    released(res::BrewResult)
+
+The total released from the quiver by its arrows, as a NamedTuple `(water, co2)` of masses:
+the water evaporated and the CO₂ escaped (net of the CO₂ taken in by forced carbonation).
+"""
+function released(r::BrewResult)
+    w, c = 0.0u"kg", 0.0u"g"
+    for v in values(r.arrows), a in v
+        w += a.released.water
+        c += a.released.co2
+    end
+    return (water = w, co2 = c)
+end
+
+"""
+    products(res::BrewResult, q::Quiver)
+
+The contents of the nodes with no arrows leaving them, as a `Dict` from label to contents.
+"""
+products(r::BrewResult, q::Quiver) =
+    Dict(n => r[n] for n in r.order if isempty(successors(q, n)))
 
 """
     brew(q::Quiver; models = (;))
 
-Computes all the processes of `q`, in topological order, with the models of
+Computes all the nodes and arrows of `q`, in topological order, with the models of
 BrewingFormulas in `models` (a NamedTuple overriding [`DEFAULT_MODELS`](@ref), e.g.
 `(bitterness = Rager(), color = Daniels())`). Returns a [`BrewResult`](@ref).
 """
 function brew(q::Quiver; models::NamedTuple = (;))
     ms = merge(DEFAULT_MODELS, models)
     order = nodes(q)
-    res = BrewResult(Dict{Symbol, NodeResult}(), Dict{Tuple{Symbol, Symbol}, Vector{Liquor}}(),
+    res = BrewResult(Dict{Symbol, NodeResult}(), Dict{Tuple{Symbol, Symbol}, Vector{ArrowResult}}(),
                      order, ms)
     for label in order
         _brew_node!(res, q, label)
@@ -53,38 +103,38 @@ end
 """
     rebrew!(res::BrewResult, q::Quiver, label)
 
-Updates `res` after a change of the process `label` of `q` or of the transfers leaving it,
-recomputing only `label` and the processes downstream of it.
+Updates `res` after a change of the node `label` of `q` (its initial contents) or of the
+arrows leaving it, recomputing only `label` and the nodes downstream of it.
 
 Other changes of the structure of `q` since `res` was computed are detected and recomputed
-too: the processes added, the sources and destinations of the transfers removed (by
-[`disconnect!`](@ref) or [`remove!`](@ref)), and the sources of new transfers. Changes of the amounts of existing
-transfers are not detected, so give the label of their source.
+too: the nodes added, the sources and destinations of the arrows removed (by
+[`disconnect!`](@ref) or [`remove!`](@ref)), and the sources of new arrows. Changes of
+existing arrows are not detected, so give the label of their source.
 """
 function rebrew!(res::BrewResult, q::Quiver, label::Symbol)
-    haskey(q, label) || throw(ArgumentError("there is no process labelled :$label"))
+    haskey(q, label) || throw(ArgumentError("there is no node labelled :$label"))
     changed = Set([label])
-    # processes removed from the quiver
+    # nodes removed from the quiver
     for n in collect(keys(res.nodes))
         haskey(q, n) || delete!(res.nodes, n)
     end
-    # transfers removed: drop their flows and recompute their sources (what is left at a
-    # port changes) and destinations
-    for (s, d) in collect(keys(res.flows))
+    # arrows removed: drop their results, and recompute their sources (what is left in a
+    # node changes) and destinations
+    for (s, d) in collect(keys(res.arrows))
         if !(haskey(q, s) && haskey(q, d) && haskey(q.graph, s, d))
-            delete!(res.flows, (s, d))
+            delete!(res.arrows, (s, d))
             haskey(q, s) && push!(changed, s)
             haskey(q, d) && push!(changed, d)
         end
     end
     order = nodes(q)
     for n in order
-        # processes added
+        # nodes added
         haskey(res.nodes, n) || push!(changed, n)
-        # transfers added: recompute their sources
+        # arrows added: recompute their sources
         for d in outneighbor_labels(q.graph, n)
-            f = get(res.flows, (n, d), nothing)
-            (f === nothing || length(f) != length(q.graph[n, d])) && push!(changed, n)
+            a = get(res.arrows, (n, d), nothing)
+            (a === nothing || length(a) != length(q[n => d])) && push!(changed, n)
         end
     end
     resize!(res.order, length(order))
@@ -97,77 +147,59 @@ function rebrew!(res::BrewResult, q::Quiver, label::Symbol)
 end
 
 function _brew_node!(res::BrewResult, q::Quiver, label::Symbol)
-    p = q[label]
-    g = q.graph
-    inputs = Dict{Symbol, Liquor}()
-    for s in inneighbor_labels(g, label)
-        flows = get(res.flows, (s, label), nothing)
-        flows === nothing && error("missing the transfers from :$s to :$label")
-        for (t, l) in zip(g[s, label], flows)
-            _check_inport(q, label, t.to)
-            inputs[t.to] = get(inputs, t.to, zero(Liquor)) + l
+    contents = q[label].initial
+    for s in inneighbor_labels(q.graph, label)
+        rs = get(res.arrows, (s, label), nothing)
+        rs === nothing && error("missing the arrows from :$s to :$label")
+        for r in rs
+            contents += r.moved
         end
     end
-    outputs = process(p, inputs, res.models)
-    leftovers = _distribute!(res, q, label, outputs)
-    res.nodes[label] = NodeResult(inputs, outputs, leftovers)
+    results, left = _pass(q, label, contents, res.models)
+    for d in outneighbor_labels(q.graph, label)
+        res.arrows[(label, d)] = [results[(d, i)] for i in eachindex(q[label => d])]
+    end
+    res.nodes[label] = NodeResult(contents, left)
     return res
 end
 
-# split the outputs of `label` along its transfers; returns the leftovers
-function _distribute!(res, q, label, outputs)
-    g = q.graph
-    eq = res.models.gravity
-    outs = [(d, i, t) for d in outneighbor_labels(g, label) for (i, t) in enumerate(g[label, d])]
-    fractions = Dict{Tuple{Symbol, Int}, Float64}()
-    leftovers = Dict{Symbol, Liquor}()
-    for (port, l) in outputs
-        mine = [(d, i, t) for (d, i, t) in outs if t.from == port]
-        v = volume(l; eq)
-        explicit = 0.0
-        for (d, i, t) in mine
-            t.amount === nothing && continue
-            # (from an empty port, every transfer takes an empty liquor)
-            f = t.amount isa Real ? t.amount :
-                (iszero(v) ? 0.0 : float(uconvert(NoUnits, t.amount / v)))
-            fractions[(d, i)] = f
-            explicit += f
-        end
-        explicit ≤ 1 + 1e-9 || throw(ArgumentError(
-            "the transfers from :$label at port :$port take " *
-            "$(round(100explicit; digits = 1))% of the $(round(u"L", v; digits = 2)) available"))
-        explicit = min(explicit, 1.0)
-        rest = [(d, i) for (d, i, t) in mine if t.amount === nothing]
-        for (d, i) in rest
-            fractions[(d, i)] = (1 - explicit) / length(rest)
-        end
-        if isempty(rest) && explicit < 1 - 1e-12
-            leftovers[port] = (1 - explicit) * l
-        end
+# pass the contents of a node along its arrows; returns the results of the arrows, by
+# (destination, index), and the leftover
+function _pass(q, label, c::Contents, models)
+    eq = models.gravity
+    outs = _outgoing(q, label)
+    results = Dict{Tuple{Symbol, Int}, ArrowResult}()
+    # a transformation takes everything
+    if length(outs) == 1 && outs[1][3] isa AbstractTransformation
+        d, i, t = outs[1]
+        new, rel = transform(t, c, models)
+        results[(d, i)] = ArrowResult(new, rel)
+        return results, zero(Contents)
     end
-    for d in outneighbor_labels(g, label)
-        ts = g[label, d]
-        res.flows[(label, d)] = [begin
-            haskey(outputs, t.from) || throw(ArgumentError(
-                ":$label produced nothing at port :$(t.from), used by a transfer to :$d"))
-            fractions[(d, i)] * outputs[t.from]
-        end for (i, t) in enumerate(ts)]
+    # transfers of amounts: uniform parts of the contents
+    taken = 0.0
+    for (d, i, a) in outs
+        a isa Transfer || continue
+        f = _fraction_of(a.amount, c, eq)
+        f === nothing && continue
+        results[(d, i)] = ArrowResult(with_timing(f * c, a.timing))
+        taken += f
     end
-    return leftovers
-end
-
-"""
-    products(res::BrewResult, q::Quiver)
-
-The liquors at the end of the quiver: the outputs of the processes with no successors,
-as a `Dict` from label to liquor (the main output port `:out`, when it exists).
-"""
-function products(res::BrewResult, q::Quiver)
-    d = Dict{Symbol, Liquor}()
-    for n in res.order
-        isempty(successors(q, n)) || continue
-        outs = res[n].outputs
-        haskey(outs, :out) && (d[n] = outs[:out])
+    taken ≤ 1 + 1e-9 || throw(ArgumentError(
+        "the transfers from :$label take $(round(100taken; digits = 1))% of its contents"))
+    # (all taken, up to rounding errors: nothing is left)
+    rest = taken ≥ 1 - 1e-12 ? zero(Contents) : (1 - taken) * c
+    # the drain
+    for (d, i, a) in outs
+        a isa Drain || continue
+        drained, rest = _drain(a, rest, eq)
+        results[(d, i)] = ArrowResult(drained)
     end
-    return d
+    # transfers of the rest
+    others = [(d, i, a) for (d, i, a) in outs if a isa Transfer && a.amount === nothing]
+    isempty(others) && return results, rest
+    for (d, i, a) in others
+        results[(d, i)] = ArrowResult(with_timing((1 / length(others)) * rest, a.timing))
+    end
+    return results, zero(Contents)
 end

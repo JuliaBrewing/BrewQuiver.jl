@@ -3,10 +3,11 @@
 [![CI](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml)
 
 The engine of the BrewQuiver brewing software, in pure Julia: the brewing process as a
-**quiver**, a directed acyclic graph whose nodes are processes (mash, boil, fermentation,
-packaging, blending, ...) and whose edges are transfers of liquors between them. Unlike a
-linear recipe, a quiver can split and merge streams, as in parti-gyle brewing, double
-mashes, or blending.
+**quiver**, a directed acyclic multigraph whose **nodes are the contents of vessels** at the
+stages of the brewing (the lots of malt and hops, the water, the mash, the wort in the
+kettle, the beer in the fermentor, ...) and whose **arrows are the processes** between them:
+transfers, drains, mash rests, boils, fermentations, conditioning. Unlike a linear recipe, a
+quiver can split and merge streams, as in parti-gyle brewing, double mashes, or blending.
 
 This package is still **under development** and not yet registered. It builds on
 [UnitfulBrewing.jl](https://github.com/JuliaBrewing/UnitfulBrewing.jl) for the units and on
@@ -20,23 +21,31 @@ Pkg.add(url = "https://github.com/JuliaBrewing/BrewQuiver.jl")
 
 ## Design
 
-- **`Liquor`**, the state of a stream, holds *conserved* quantities only: the masses of
-  water, extract, alcohol, iso-alpha acids and CO₂, color units (lb·°L) and the temperature.
-  Mixing is `+` and splitting is scaling by a fraction, so both are exact. The total volume
-  (at 20 °C), gravity, original gravity, ABV, IBU, color and carbonation are derived from
-  them with BrewingFormulas. A wort's volume thus follows from its water and the extract
-  dissolved from the grains, and a blend's original gravity from Balling's relations.
-- **Processes** are subtypes of `AbstractProcess`, implementing
-  `process(p, inputs, models)` and, when needed, `inports(p)` and `outports(p)`. Behavior
-  is selected by dispatch, not by inheritance: `Source`, `MashTun` (single infusion with
-  batch sparges, one output port per running), `Boil`, `Ferment`, `Package`, `Mix`.
-- **`Quiver`** is a `MetaGraphsNext` graph labelled by symbols. Its edges carry
-  `Transfer`s from an output port to an input port, each taking a volume, a fraction, or
-  what is left. `connect!` refuses transfers that would create cycles.
-- **`brew(q)`** computes the processes in topological order and returns a `BrewResult`.
-  Whatever is not transferred is kept as a leftover, so extract, water and color are
-  conserved over the whole quiver. `rebrew!(res, q, label)` recomputes only what is
-  downstream of a changed process.
+- **`Contents`**, the state of a node, holds *conserved* quantities only: a `Liquor` (the
+  masses of water, extract, alcohol, iso-alpha acids and CO₂, color units in lb·°L, and the
+  temperature) and solids (ingredients as added, spent grain, hop matter, yeast). Mixing is
+  `+` and splitting is scaling by a fraction, so both are exact. The volume (at 20 °C),
+  gravity, original gravity, ABV, IBU, color and carbonation are derived with
+  BrewingFormulas.
+- **Nodes** are added with `add!`: lots with initial contents (`pale => 4.5u"kg"`,
+  `water(16u"L")`), and the empty stages of each vessel, filled by arrows. Whatever arrives
+  at a node is mixed, so blending needs no special process.
+- **Arrows** are added with `connect!`. A quiver may have several arrows between the same
+  nodes (two hop additions from the same lot):
+  - `Transfer(amount)` moves a uniform part of the contents (a volume, a mass, a fraction,
+    or the rest), with the timing of the ingredients it brings (`remaining = 10u"minute"`
+    or `at = 50u"minute"`, relative to the transformation that follows);
+  - `Drain` moves the liquid only, leaving the solids, what the grain absorbs and what the
+    vessel retains;
+  - transformations (`MashRest`, `Boil`, `Ferment`, `Prime`, `Carbonate`) turn all the
+    contents of a node into the next stage of the vessel. They act on what is in the node:
+    the grain that was mashed in, the hops in the kettle, each for its own time, the culture
+    that was pitched, the priming sugar in the bottling bucket.
+- **`brew(q)`** computes the nodes in topological order and returns a `BrewResult`:
+  `res[label]` is the contents of a node and `res[source => destination]` what its arrows
+  did. What no arrow takes is kept as a leftover (spent grain, trub, yeast cake), so with
+  what the arrows release (evaporated water, CO₂) every mass is conserved over the whole
+  quiver. `rebrew!(res, q, label)` recomputes only what is downstream of a change.
 - **Models** (hop utilization, color, ABV, gravity conversion) come from BrewingFormulas and
   are chosen per brew: `brew(q; models = (bitterness = Rager(),))`.
 
@@ -52,28 +61,56 @@ relations (J. De Clerck, *A Textbook of Brewing*, 1958; M. L. Hall, "Brew By the
 ```julia
 using Unitful, UnitfulBrewing, BrewingFormulas, BrewQuiver
 
-pale    = Fermentable("Pale ale malt"; yield = 80u"percent", color = 3u"°L")
-crystal = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L")
-cascade = Hop("Cascade"; alpha = 6u"percent")
-us05    = Culture("US-05"; attenuation = 78u"percent")
+pale     = Fermentable("Pale ale malt"; yield = 80u"percent", color = 3u"°L")
+crystal  = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L")
+cascade  = Hop("Cascade"; alpha = 6u"percent")
+us05     = Culture("US-05"; attenuation = 78u"percent")
+dextrose = Fermentable("Corn sugar"; kind = :sugar, yield = 100u"percent", moisture = 0)
 
 q = Quiver()
-add!(q, :strike, Source(water(16u"L")))
-add!(q, :mashtun, MashTun(grains = [pale => 4.5u"kg", crystal => 0.3u"kg"], sparge = [14u"L"]))
-add!(q, :boil, Boil(time = 60u"minute", loss = 1u"L",
-                    hops = [cascade => 25u"g" => 60u"minute", cascade => 20u"g" => 10u"minute"]))
-add!(q, :fermentor, Ferment(culture = us05, loss = 1u"L"))
-add!(q, :bottles, Package(carbonation = 2.4u"vols"))
-connect!(q, :strike => :mashtun)
-connect!(q, (:mashtun, :running1) => :boil)
-connect!(q, (:mashtun, :running2) => :boil)
-connect!(q, :boil => :fermentor)
-connect!(q, :fermentor => :bottles)
+
+# the lots on the shelf
+add!(q, :pale, pale => 4.5u"kg")
+add!(q, :crystal, crystal => 0.3u"kg")
+add!(q, :cascade, cascade => 50u"g")
+add!(q, :yeast, us05 => 1)
+add!(q, :strike_water, water(16u"L"; temperature = 75u"°C"))
+add!(q, :sparge_water, water(14u"L"; temperature = 80u"°C"))
+add!(q, :priming_sugar, dextrose => 130u"g")
+
+# the stages of each vessel
+add!(q, :mash, :rested, :grain_bed; vessel = :mashtun)
+add!(q, :kettle, :wort; vessel = :kettle)
+add!(q, :fermentor, :beer; vessel = :fermentor)
+add!(q, :bottling, :bottles; vessel = :bottles)
+
+# mash and batch sparge
+connect!(q, [:strike_water, :pale, :crystal] => :mash)
+connect!(q, :mash => :rested, MashRest(temperature = 67u"°C", time = 60u"minute"))
+connect!(q, :rested => :kettle, Drain(absorption = 1.0u"L/kg"))   # first runnings
+connect!(q, :rested => :grain_bed)                                 # grain and absorbed wort
+connect!(q, :sparge_water => :grain_bed)
+connect!(q, :grain_bed => :kettle, Drain(absorption = 1.0u"L/kg")) # second runnings
+
+# boil, fermentation, bottle conditioning
+connect!(q, :cascade => :kettle, Transfer(25u"g"; remaining = 60u"minute"))
+connect!(q, :cascade => :kettle, Transfer(25u"g"; remaining = 10u"minute"))
+connect!(q, :kettle => :wort, Boil(time = 60u"minute", evaporation = 4u"L/hr"))
+connect!(q, :wort => :fermentor, Drain(retain = 1u"L"))           # trub and hops stay
+connect!(q, :yeast => :fermentor)
+connect!(q, :fermentor => :beer, Ferment(temperature = 19u"°C", time = 14u"d"))
+connect!(q, :priming_sugar => :bottling)
+connect!(q, :beer => :bottling, Drain(retain = 1u"L"))            # the yeast cake stays
+connect!(q, :bottling => :bottles, Prime(sugar = CornSugar()))
 
 res = brew(q)
-res[:bottles, :out]   # 21.5 L, OG 1.055, 5.96% ABV, 21 IBU, 7.5 SRM, 2.4 vols
+res[:bottles]      # the beer in the bottles
+leftovers(res)     # spent grain, trub, yeast cake, ... and the bottles
 ```
 
-See [`examples/fullers_partigyle.jl`](examples/fullers_partigyle.jl) for the parti-gyle of
+See [`examples/single_batch.jl`](examples/single_batch.jl), and
+[`examples/fullers_partigyle.jl`](examples/fullers_partigyle.jl) for the parti-gyle of
 Fuller's Barley Wine, ESB, Pale Ale and Bitter: two mashes, three boils and fermentors, and
 four blended beers.
+
+The previous design, with processes as nodes and transfers as edges, is in version 0.0.1.
