@@ -149,13 +149,19 @@ end
 # stand, not modelled yet: no boiling); in the mash, the fermentation and the packaging,
 # `time` counts forward from the start of the step, and a `duration` without `time` is taken
 # as staying until the end of the step.
+# a boil addition steeping for `time` after the boil, placed once the stand is known
+struct _Steep
+    time::MinQ
+end
+
 function _timing(t, stage)
     t === nothing && return nothing
     time = t.time === nothing ? nothing : _q(t.time)
     duration = t.duration === nothing ? nothing : _q(t.duration)
     if stage === :boil
-        time !== nothing && return Remaining(time)
-        duration !== nothing && return Remaining(0u"minute")
+        # (an addition at the end of the boil with a duration steeps in the stand)
+        time !== nothing && !(iszero(time) && duration !== nothing) && return Remaining(time)
+        duration !== nothing && return _Steep(uconvert(u"minute", float(duration)))
     else
         time !== nothing && return At(time)
         duration !== nothing && return Remaining(duration)
@@ -212,23 +218,40 @@ function _additions(r, boil_time, attenuation)
     return adds
 end
 
-# the mash: the rests (temperature, time, water, water temperature) and the sparges (volume
-# or nothing, temperature)
-function _mash_steps(r, grist, mash_ratio)
+# The mash: the rests, as NamedTuples (kind, temperature, time, water, water_temperature,
+# decoction, decoction_time) with the water added before them (or `nothing`), and for a
+# decoction the volume of mash to decoct (or `nothing`, for the step temperature) and the
+# time to boil it; and the sparges (volume or nothing, temperature)
+function _mash_steps(r, grist, mash_ratio, decoction_time)
     rests, sparges = [], []
     steps = r.mash === nothing ? [] : r.mash.mash_steps
+    water = 0.0u"L"
     for s in steps
         kind = s.type.value
         T, t = _q(s.step_temperature), _q(s.step_time)
         amount = s.amount === nothing ? nothing : _q(s.amount)
         amount !== nothing && iszero(amount) && (amount = nothing)
+        Tw = s.infuse_temperature === nothing ? nothing : _q(s.infuse_temperature)
         if kind in ("infusion", "temperature")
             if isempty(rests) && amount === nothing
                 ratio = s.water_grain_ratio === nothing ? mash_ratio : _q(s.water_grain_ratio)
                 amount = uconvert(u"L", ratio * grist)
+            elseif kind == "infusion" && amount === nothing
+                # the water at the infusion temperature that raises the mash to this step
+                amount = uconvert(u"L", infusion_volume(rests[end].temperature, T, water, grist;
+                                                        infusion_temperature = something(Tw, 100u"°C")))
             end
-            Tw = s.infuse_temperature === nothing ? T : _q(s.infuse_temperature)
-            push!(rests, (T, t, amount, Tw))
+            amount === nothing || (water += amount)
+            push!(rests, (kind = Symbol(kind), temperature = T, time = t, water = amount,
+                          water_temperature = something(Tw, isempty(rests) ? T : 100u"°C"),
+                          decoction = nothing, decoction_time = nothing))
+        elseif kind == "decoction"
+            isempty(rests) && throw(ArgumentError(
+                "a decoction needs a mash to decoct: it cannot be the first step (in $(repr(r.name)))"))
+            dt = s.ramp_time === nothing ? decoction_time : _q(s.ramp_time)
+            push!(rests, (kind = :decoction, temperature = T, time = t, water = nothing,
+                          water_temperature = T, decoction = amount,
+                          decoction_time = uconvert(u"minute", float(dt))))
         elseif kind == "sparge"
             push!(sparges, (amount, T))
         elseif kind == "drain mash tun"
@@ -238,7 +261,10 @@ function _mash_steps(r, grist, mash_ratio)
                                 "(in $(repr(r.name)))"))
         end
     end
-    isempty(rests) && push!(rests, (67u"°C", 60u"minute", uconvert(u"L", mash_ratio * grist), 67u"°C"))
+    isempty(rests) && push!(rests, (kind = :infusion, temperature = 67u"°C", time = 60u"minute",
+                                    water = uconvert(u"L", mash_ratio * grist),
+                                    water_temperature = 67u"°C", decoction = nothing,
+                                    decoction_time = nothing))
     return rests, sparges
 end
 
@@ -250,6 +276,39 @@ function _fermentation(r)
     t = sum((uconvert(u"d", _q(s.step_time)) for s in steps if s.step_time !== nothing);
             init = 0.0u"d")
     return (T, iszero(t) ? 14u"d" : t)
+end
+
+# the evaporation of a boiling decoction, relative to its volume
+const DECOCTION_EVAPORATION = 10.0u"percent/hr"
+
+# the fraction of a mash at `T1` to decoct (taken to boiling, 100 °C) to bring the mash to
+# `T2` when returned, by the mixing of the quiver (by mass, as water)
+_decoction_fraction(T1, T2) =
+    clamp(float(uconvert(NoUnits, (_temperature(T2) - _temperature(T1)) /
+                                  (100.0u"°C" - _temperature(T1)))), 0.0, 1.0)
+
+# The stand and the chilling after the boil, from the boil steps: after the step of the
+# boil (the first one at 99 °C or more), the steps ending at 60 °C or more are a stand, at
+# the temperature they end at, and the others chill the wort. Returns (stand, stand
+# temperature or `nothing`, chilling time).
+function _boil_steps(r)
+    stand, T, chill = 0.0u"minute", nothing, 0.0u"minute"
+    (r.boil === nothing || r.boil.boil_steps === nothing) && return (stand, T, chill)
+    steps = r.boil.boil_steps
+    hot(x) = x !== nothing && _q(x) ≥ 99u"°C"
+    k = findfirst(s -> hot(s.start_temperature) && (s.end_temperature === nothing || hot(s.end_temperature)), steps)
+    k === nothing && return (stand, T, chill)
+    for s in steps[k + 1:end]
+        t = s.step_time === nothing ? 0.0u"minute" : uconvert(u"minute", float(_q(s.step_time)))
+        e = s.end_temperature === nothing ? nothing : uconvert(u"°C", float(_q(s.end_temperature)))
+        if e !== nothing && e ≥ 60u"°C"
+            stand += t
+            T = e
+        else
+            chill += t
+        end
+    end
+    return (stand, T, chill)
 end
 
 """
@@ -284,18 +343,25 @@ else `attenuation`, with a warning.
 
 The timings of the additions follow BeerJSON (format 3.0): in the boil, `time` counts back
 from the end of the boil ([`Remaining`](@ref)), and an addition with only a `duration`
-steeps after the boil (not modelled yet, so it does not boil); in the mash, the
+steeps after the boil, in a stand (see [`Boil`](@ref)); in the mash, the
 fermentation and the packaging, `time` counts forward from the start of the step
 ([`At`](@ref)), and an addition with only a `duration` stays until the end of the step.
 Hops added to the mash are taken as first wort hops, boiling for the whole boil; hops
 added to the boil earlier than the boil starts (as in documents converted from BeerXML
 before the importer of BeerJSON was fixed) are taken as dry hops, with a warning.
-Miscellaneous and water additions are not used yet. Decoction and souring steps are not
-supported yet.
+Infusion steps without an amount get the water that raises the mash to their temperature
+(`infusion_volume`); decoction steps boil the volume of mash they give (or the fraction
+that reaches their temperature) for their ramp time, or else `decoction_time`, in the
+kettle, evaporating 10% of their volume per hour, and return it to the mash tun (`:decoction_k`, `:decoction_k_boiled`,
+`:mash_k_in`). The boil steps after the boil give a stand (at the temperature they end at,
+or else `stand_temperature`) and the time of the chilling; additions steeping after the
+boil set the length of the stand. Miscellaneous and water additions are not used yet.
+Souring steps are not supported yet.
 """
 function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = nothing,
                 calibration::AbstractCalibration = NoCalibration(),
-                mash_ratio = 3u"L/kg", attenuation = 75u"percent")
+                mash_ratio = 3u"L/kg", attenuation = 75u"percent",
+                decoction_time = 15u"minute", stand_temperature = 80u"°C")
     vessels = _equipment(equipment)
     kv = get(vessels, :kettle, Vessel(name = "Kettle"))
     batch = uconvert(u"L", _q(r.batch_size))
@@ -314,6 +380,15 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     end
     adds = _additions(r, boil_time, something(att, attenuation))
     isempty(adds) && throw(ArgumentError("the recipe $(repr(r.name)) has no ingredients"))
+
+    # the stand after the boil: from the boil steps, or the longest steep of the additions;
+    # an addition steeping less than the stand is added during it
+    stand, stand_T, chill_time = _boil_steps(r)
+    steeps = [a[4].time for a in adds if a[4] isa _Steep]
+    stand = max(stand, maximum(steeps; init = 0.0u"minute"))
+    adds = [a[4] isa _Steep ? (a[1], a[2], a[3], a[4].time ≥ stand ? Remaining(0u"minute") :
+                                                  At(boil_time + stand - a[4].time)) : a
+            for a in adds]
 
     # volumes and rates
     kettle_loss = kv.dead_space
@@ -349,18 +424,24 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     stage_node = Dict(:boil => :kettle, :fermentation => :fermentor, :package => :packaging)
     rests, sparges = Any[], Any[]
     if !isempty(mashed)
-        rests, sparges = _mash_steps(r, grist, mash_ratio)
+        rests, sparges = _mash_steps(r, grist, mash_ratio, decoction_time)
         stage_node[:mash] = :mash
-        add!(q, :strike_water, water(rests[1][3]; temperature = rests[1][4]))
+        add!(q, :strike_water, water(rests[1].water; temperature = rests[1].water_temperature))
         for (k, rest) in enumerate(rests)
-            k > 1 && rest[3] !== nothing &&
-                add!(q, Symbol(:infusion_, k), water(rest[3]; temperature = rest[4]))
+            k > 1 && rest.water !== nothing &&
+                add!(q, Symbol(:infusion_, k), water(rest.water; temperature = rest.water_temperature))
         end
         isempty(sparges) && push!(sparges, (nothing, 76u"°C"))
         for (k, s) in enumerate(sparges)
             add!(q, Symbol(:sparge_water_, k), water(something(s[1], 0u"L"); temperature = s[2]))
         end
-        add!(q, :mash, (Symbol(:mash_, k) for k in eachindex(rests))...; vessel = :mashtun)
+        add!(q, :mash; vessel = :mashtun)
+        for (k, rest) in enumerate(rests)
+            rest.kind === :decoction && add!(q, Symbol(:mash_, k, :_in); vessel = :mashtun)
+            add!(q, Symbol(:mash_, k); vessel = :mashtun)
+            rest.kind === :decoction &&
+                add!(q, Symbol(:decoction_, k), Symbol(:decoction_, k, :_boiled); vessel = :kettle)
+        end
         add!(q, (Symbol(:grain_bed_, k) for k in eachindex(sparges))...; vessel = :mashtun)
     else
         add!(q, :boil_water, water(pre_boil))
@@ -388,15 +469,33 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     kv = _with(kv; evaporation = rate)
     equip!(q, :kettle, kv)
     haskey(vessels, :fermentor) && equip!(q, :fermentor, vessels[:fermentor])
-    mashrest(rest, c) = MashRest(temperature = rest[1], time = rest[2], conversion = c)
+    mashrest(rest, c) = MashRest(temperature = rest.temperature, time = rest.time, conversion = c)
+    # the node each rest starts from: the mash before it, or the mash with the decoction back
+    rest_source(k) = k == 1 ? :mash : rests[k].kind === :decoction ? Symbol(:mash_, k, :_in) :
+                     Symbol(:mash_, k - 1)
     if !isempty(mashed)
         connect!(q, :strike_water => :mash)
-        prev = :mash
+        water_before = 0.0u"L"
         for (k, rest) in enumerate(rests)
-            k > 1 && rest[3] !== nothing && connect!(q, Symbol(:infusion_, k) => prev)
-            connect!(q, prev => Symbol(:mash_, k), mashrest(rest, conversion))
-            prev = Symbol(:mash_, k)
+            if rest.kind === :decoction
+                # a part of the mash is boiled and returned, to raise it to the next rest
+                prev, pot, boiled = Symbol(:mash_, k - 1), Symbol(:decoction_, k), Symbol(:decoction_, k, :_boiled)
+                f = rest.decoction === nothing ? _decoction_fraction(rests[k - 1].temperature, rest.temperature) :
+                    clamp(float(uconvert(NoUnits, rest.decoction / mash_volume(water_before, grist))), 0.0, 1.0)
+                connect!(q, prev => pot, Transfer(f))
+                connect!(q, prev => rest_source(k))
+                # (a pot of thick mash evaporates little: a rate relative to its volume)
+                connect!(q, pot => boiled, Boil(time = rest.decoction_time,
+                                                evaporation = DECOCTION_EVAPORATION))
+                connect!(q, boiled => rest_source(k))
+            end
+            if k > 1 && rest.water !== nothing
+                connect!(q, Symbol(:infusion_, k) => rest_source(k))
+            end
+            rest.water === nothing || (water_before += rest.water)
+            connect!(q, rest_source(k) => Symbol(:mash_, k), mashrest(rest, conversion))
         end
+        prev = Symbol(:mash_, length(rests))
         drain = Drain()
         connect!(q, prev => :kettle, drain)
         for k in eachindex(sparges)
@@ -411,8 +510,9 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     end
 
     # the boil, the fermentation and the packaging
-    connect!(q, :kettle => :wort, Boil(time = boil_time))
-    connect!(q, :wort => :chilled, Chill(temperature = Tferm))
+    connect!(q, :kettle => :wort, Boil(time = boil_time, stand = stand,
+                                        stand_temperature = something(stand_T, stand_temperature)))
+    connect!(q, :wort => :chilled, Chill(temperature = Tferm, time = chill_time))
     connect!(q, :chilled => :fermentor, Drain())
     has_culture = any(a -> a[1] isa Culture && a[3] === :fermentation, adds)
     connect!(q, :fermentor => :beer,
@@ -452,10 +552,8 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
             new = clamp(conversion * target / e, 0.0, 1.0)
             moved |= abs(new - conversion) > 1e-9
             conversion = new
-            prev = :mash
             for (k, rest) in enumerate(rests)
-                q[prev => Symbol(:mash_, k)] = mashrest(rest, conversion)
-                prev = Symbol(:mash_, k)
+                q[rest_source(k) => Symbol(:mash_, k)] = mashrest(rest, conversion)
             end
         end
         moved || break

@@ -33,6 +33,10 @@ Base.getindex(s::Timeline, e::Pair{Symbol, Symbol}) = s.arrows[(e.first, e.secon
 Base.keys(s::Timeline) = s.order
 
 _timed(a) = a isa Transfer && a.timing !== nothing
+
+# the time within which the timings of the additions to a transformation count
+_timing_span(t, iv) = iv.stop - iv.start
+_timing_span(b::Boil, iv) = min(b.time, iv.stop - iv.start)
 _rest(a) = a isa Transfer && a.amount === nothing
 
 """
@@ -130,8 +134,13 @@ function _timeline(q::Quiver, res, start)
             if transformation === nothing
                 b = ready[n]
             else
-                total = transformation.stop - transformation.start
-                b = transformation.start + total - duration_in(a.timing, total)
+                # (the timing counts within the span of the transformation: the boil,
+                # not the stand that follows it)
+                total = _timing_span(only(_outgoing(q, n))[3], transformation)
+                b = a.timing isa At ?
+                    transformation.start + clamp(a.timing.time, zero(total),
+                                                 transformation.stop - transformation.start) :
+                    transformation.start + total - duration_in(a.timing, total)
             end
             b = max(b, ready[p])
             iv[(p, n)][i] = Interval(b, b + dur(a, p, n, i))

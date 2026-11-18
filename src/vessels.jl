@@ -5,11 +5,12 @@ const RateQ = Union{typeof(1.0u"L/hr"), typeof(1.0u"hr^-1")}
 
 """
     Vessel(; name = "", capacity = nothing, dead_space = nothing, absorption = nothing,
-           evaporation = nothing, drain_rate = nothing)
+           hop_absorption = nothing, evaporation = nothing, drain_rate = nothing)
 
 The equipment of a vessel: its `capacity`, its `dead_space` (the liquid left behind when it
 is drained: the dead space under a false bottom, the trub of a kettle, the yeast cake of a
 fermentor), the grain `absorption` per mass of grain (a mash or lauter tun), the
+`hop_absorption` per mass of hops (a kettle, a fermentor with dry hops), the
 `evaporation` rate of a boil (a volume, or a fraction of the volume, per time) and the
 `drain_rate` (a volume per time). Attach it to the nodes of a vessel with
 [`equip!`](@ref); what is not given is left to the arrows or their defaults.
@@ -19,15 +20,17 @@ struct Vessel
     capacity::Union{Nothing, LQ}
     dead_space::Union{Nothing, LQ}
     absorption::Union{Nothing, typeof(1.0u"L/kg")}
+    hop_absorption::Union{Nothing, typeof(1.0u"L/kg")}
     evaporation::Union{Nothing, RateQ}
     drain_rate::Union{Nothing, typeof(1.0u"L/minute")}
 end
 
 Vessel(; name::AbstractString = "", capacity = nothing, dead_space = nothing,
-       absorption = nothing, evaporation = nothing, drain_rate = nothing) =
+       absorption = nothing, hop_absorption = nothing, evaporation = nothing, drain_rate = nothing) =
     Vessel(name, _maybe(x -> uconvert(u"L", float(x)), capacity),
            _maybe(x -> uconvert(u"L", float(x)), dead_space),
-           _maybe(x -> uconvert(u"L/kg", float(x)), absorption), _maybe(_rate, evaporation),
+           _maybe(x -> uconvert(u"L/kg", float(x)), absorption),
+           _maybe(x -> uconvert(u"L/kg", float(x)), hop_absorption), _maybe(_rate, evaporation),
            _maybe(x -> uconvert(u"L/minute", float(x)), drain_rate))
 
 # a copy of `v` with some of its properties changed
@@ -41,5 +44,7 @@ end
 _resolve(a::AbstractArrow, v) = a
 _resolve(d::Drain, v::Vessel) = Drain(something(d.absorption, v.absorption, Some(nothing)),
                                       something(d.retain, v.dead_space, Some(nothing)),
-                                      d.duration)
-_resolve(b::Boil, v::Vessel) = Boil(b.time, something(b.evaporation, v.evaporation, Some(nothing)))
+                                      d.duration,
+                                      something(d.hop_absorption, v.hop_absorption, Some(nothing)))
+_resolve(b::Boil, v::Vessel) = Boil(b.time, something(b.evaporation, v.evaporation, Some(nothing)),
+                                    b.stand, b.stand_temperature)

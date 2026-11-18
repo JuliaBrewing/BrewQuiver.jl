@@ -118,7 +118,9 @@ end
     min(v) = (unit = "min", value = v)
     @test BrewQuiver._timing(t(time = min(10), use = "add_to_boil"), :boil) == Remaining(10u"minute")
     @test BrewQuiver._timing(t(duration = min(20), use = "add_to_boil"), :boil) ==
-          Remaining(0u"minute")                                       # a hop stand
+          BrewQuiver._Steep(20u"minute")                              # in the hop stand
+    @test BrewQuiver._timing(t(time = min(0), duration = min(20), use = "add_to_boil"), :boil) ==
+          BrewQuiver._Steep(20u"minute")
     @test BrewQuiver._timing(t(time = (unit = "day", value = 2), use = "add_to_fermentation"),
                              :fermentation) == At(2u"d")
     @test BrewQuiver._timing(t(duration = (unit = "day", value = 3), use = "add_to_fermentation"),
@@ -141,6 +143,86 @@ end
     res = brew(q)
     @test any(s -> s isa Portion{Hop} && s.timing == At(3u"d"), solids(res[:fermentor]))
     @test conserved(res, q)
+end
+
+@testset "Step mashes, decoctions and stands" begin
+    base = sample_recipe("converted", "Kolsh.json")
+    C(T) = (unit = "C", value = T)
+    min(t) = (unit = "min", value = t)
+    step(name, type, T, t; kw...) = BeerJSON.MashStepType{Int64, Float64}(;
+        name, type, step_temperature = C(T), step_time = min(t), kw...)
+    mash(steps...) = BeerJSON.MashProcedureType{Int64, Float64}(name = "Mash",
+        grain_temperature = C(20), mash_steps = collect(steps))
+    malt = sum(quantity(a.amount) for a in base.ingredients.fermentable_additions)
+
+    # an infusion without amount: the water that raises the mash to its temperature
+    r = BeerJSON.setfields(base; mash = mash(step("Protein", "infusion", 50, 20; amount = (unit = "l", value = 15)),
+                                             step("Sacch", "infusion", 66, 60; infuse_temperature = C(95))))
+    q = quietly(() -> Quiver(r))
+    @test volume(q[:infusion_2].initial) ≈ infusion_volume(50u"°C", 66u"°C", 15u"L", malt;
+                                                           infusion_temperature = 95u"°C")
+    @test liquor(q[:infusion_2].initial).temperature ≈ 95u"°C"
+    @test conserved(brew(q), q)
+
+    # decoctions: of the fraction reaching the step, and of a given volume for its ramp time
+    r = BeerJSON.setfields(base; mash = mash(
+        step("Protein", "infusion", 50, 20; amount = (unit = "l", value = 15)),
+        step("Sacch", "decoction", 65, 60),
+        step("Mash out", "decoction", 76, 10; amount = (unit = "l", value = 8), ramp_time = min(20))))
+    q = quietly(() -> Quiver(r))
+    @test vessels(q)[:mashtun] == [:mash, :mash_1, :mash_2_in, :mash_2, :mash_3_in, :mash_3, :grain_bed_1]
+    @test vessels(q)[:kettle][1:4] == [:decoction_2, :decoction_2_boiled, :decoction_3, :decoction_3_boiled]
+    @test only(q[:decoction_2 => :decoction_2_boiled]).time == 15u"minute"
+    @test only(q[:decoction_3 => :decoction_3_boiled]).time == 20u"minute"
+    res = brew(q)
+    # (a little less: the decoction evaporates)
+    @test 63 < ustrip(u"°C", liquor(res[:mash_2_in]).temperature) < 65
+    @test mash_volume(volume(res[:decoction_3]), grist(res[:decoction_3])) ≈ 8u"L" rtol = 0.1
+    @test conserved(res, q)
+    t = timeline(res, q)
+    @test isempty(overlaps(t))
+    @test t[:mash_3].ready ≈ 20u"minute" + 15u"minute" + 60u"minute" + 20u"minute" + 10u"minute"
+    @test_throws ArgumentError quietly(() -> Quiver(BeerJSON.setfields(base;
+        mash = mash(step("Sacch", "decoction", 65, 60)))))
+
+    # the boil steps: a whirlpool, then the chilling; a hop added during the whirlpool
+    boil = only(document("real", "boil_whirlpool_chill.json").boil)
+    whirlpool_hop = BeerJSON.HopAdditionType{Int64, Float64}(name = "Citra", form = "pellet",
+        alpha_acid = (unit = "%", value = 12), amount = (unit = "g", value = 30),
+        timing = (use = "add_to_boil", time = min(0), duration = min(10)))
+    r = BeerJSON.setfields(base; boil = boil, ingredients = BeerJSON.setfields(base.ingredients;
+        hop_additions = [base.ingredients.hop_additions; whirlpool_hop]))
+    q = quietly(() -> Quiver(r))
+    b = only(q[:kettle => :wort])
+    @test b.time == 60u"minute" && b.stand == 20u"minute"
+    @test b.stand_temperature ≈ uconvert(u"°C", 180u"°F")
+    @test only(q[:wort => :chilled]).time == 25u"minute"
+    @test only(q[:citra => :kettle]).timing == At(70u"minute")      # 10 minutes of the stand
+    res = brew(q)
+    # more bitterness than the same boil without the whirlpool
+    plain = BeerJSON.setfields(base; boil = BeerJSON.setfields(boil; boil_steps = nothing))
+    @test ibu(res[:wort]) > ibu(brew(quietly(() -> Quiver(plain)))[:wort])
+    @test conserved(res, q)
+
+    # exported and imported back: the same stand, chilling, decoctions and beer
+    r = BeerJSON.setfields(r; mash = mash(
+        step("Protein", "infusion", 50, 20; amount = (unit = "l", value = 15)),
+        step("Sacch", "decoction", 65, 60)))
+    q = quietly(() -> Quiver(r))
+    res = brew(q)
+    e = recipe(res, q, :packaging)
+    @test isempty(BeerJSON.violations(e))
+    @test [x.type.value for x in e.mash.mash_steps] == ["infusion", "decoction", "sparge"]
+    @test [x.name for x in e.boil.boil_steps] == ["Boil", "Stand", "Chill"]
+    h = only(x for x in e.ingredients.hop_additions if x.name == "Citra")
+    @test quantity(h.timing.time) == 0u"minute" && quantity(h.timing.duration) == 10u"minute"
+    q2 = quietly(() -> Quiver(e))
+    r2 = brew(q2)
+    @test only(q2[:kettle => :wort]).stand == 20u"minute"
+    @test only(q2[:kettle => :wort]).stand_temperature ≈ only(q[:kettle => :wort]).stand_temperature
+    @test only(q2[:wort => :chilled]).time == 25u"minute"
+    @test gravity(r2[:fermentor]) ≈ gravity(res[:fermentor]) rtol = 1e-3
+    @test ibu(r2[:beer]) ≈ ibu(res[:beer]) rtol = 1e-2
 end
 
 @testset "Equipment" begin

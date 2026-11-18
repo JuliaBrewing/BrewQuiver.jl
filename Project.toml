@@ -1,6 +1,6 @@
 name = "BrewQuiver"
 uuid = "118187b7-b799-44b0-b9bb-0e3bc43a37c1"
-version = "0.0.7"
+version = "0.0.8"
 authors = ["Ricardo Rosa <rmsrosa@gmail.com>"]
 
 [deps]
@@ -13,7 +13,7 @@ UnitfulBrewing = "0971afc3-6d60-4b49-b3a1-be0ef054b0bb"
 
 [sources]
 BeerJSON = {rev = "main", url = "https://github.com/JuliaBrewing/BeerJSON.jl"}
-BrewingFormulas = {rev = "main", url = "https://github.com/JuliaBrewing/BrewingFormulas.jl"}
+BrewingFormulas = {rev = "claude/sweet-goldberg-7wnagc", url = "https://github.com/JuliaBrewing/BrewingFormulas.jl"}
 UnitfulBrewing = {rev = "main", url = "https://github.com/JuliaBrewing/UnitfulBrewing.jl"}
 
 [compat]
