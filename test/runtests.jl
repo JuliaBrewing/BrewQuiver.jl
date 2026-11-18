@@ -6,13 +6,19 @@ using BrewQuiver
 
 const pale = Fermentable("Pale ale malt"; yield = 80u"percent", color = 3u"°L")
 const crystal = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L")
-const sugar = Fermentable("Invert sugar"; kind = :sugar, yield = 100u"percent",
-                          color = 1u"SRM", moisture = 0)
+const invert = Fermentable("Invert sugar"; kind = :sugar, yield = 100u"percent",
+                           color = 1u"SRM", moisture = 0)
+const dextrose = Fermentable("Corn sugar"; kind = :sugar, yield = 100u"percent",
+                             color = 0u"SRM", moisture = 0)
 const goldings = Hop("East Kent Goldings"; alpha = 5u"percent")
 const ale = Culture("English ale"; attenuation = 75u"percent")
 
 # extract equivalent: conserved by fermentation (2.0665 g of extract per g of ethanol)
 extract_equivalent(l::Liquor) = l.extract + 2.0665 * l.alcohol
+extract_equivalent(c::Contents) = extract_equivalent(liquor(c))
+# the extract a fermentable gives with the given conversion
+extract_of(f::Fermentable, m, conversion = 1.0) =
+    conversion * potential_extract(m, f.yield; moisture = f.moisture)
 
 @testset "BrewQuiver" begin
 
@@ -55,205 +61,349 @@ end
     @test pale.color ≈ uconvert(u"SRM", 3.0u"°L")
     @test Fermentable("x"; potential = 1.037u"sg").yield ≈ 0.8 rtol = 1e-3
     @test_throws ArgumentError Fermentable("x"; yield = 0.8, potential = 1.037u"sg")
-    @test Addition(goldings, 30u"g"; time = 60u"minute").time == 60u"minute"
-    @test_throws ArgumentError Boil(hops = [goldings => 30u"g"])   # no boil time
-    @test_throws ArgumentError MashTun(grains = [pale])
+    @test Portion(goldings, 30u"g").amount ≈ 0.03u"kg"
+    @test Portion(ale, 2).amount == 2.0
+    @test_throws DomainError Portion(ale, -1)
+    @test_throws ArgumentError Portion(goldings, 1u"L")
 end
 
-function single_batch(; models = (;))
+@testset "Contents" begin
+    w = Contents(water(10u"L"))
+    malt = Contents(pale => 4u"kg")
+    hops = Contents(goldings => 30u"g")
+    @test iszero(zero(Contents))
+    @test liquor(w) == water(10u"L")
+    @test isempty(solids(w))
+    @test solids(malt) == [Portion(pale, 4u"kg")]
+
+    # mixing merges equal portions; scaling scales everything
+    c = w + malt + Contents(pale => 1u"kg") + hops
+    @test length(solids(c)) == 2
+    @test solids(c)[1].amount ≈ 5u"kg"
+    @test 0.4c + 0.6c ≈ c
+    @test volume(0.5c) ≈ 5u"L"
+    @test total_mass(c) ≈ total_mass(water(10u"L")) + 5u"kg" + 30u"g"
+    @test grist(c) ≈ 5u"kg"
+    @test grist(Contents(invert => 1u"kg")) == 0u"kg"          # sugars are not grain
+    @test iszero(0 * c)
+
+    # timings: portions arriving at different times are kept apart
+    late = BrewQuiver.with_timing(hops, Remaining(10u"minute"))
+    @test solids(late)[1].timing == Remaining(10u"minute")
+    @test length(solids(hops + late)) == 2
+    @test !(hops ≈ late)
+    @test BrewQuiver.duration_in(nothing, 60u"minute") == 60u"minute"
+    @test BrewQuiver.duration_in(Remaining(10u"minute"), 60u"minute") == 10u"minute"
+    @test BrewQuiver.duration_in(Remaining(90u"minute"), 60u"minute") == 60u"minute"
+    @test BrewQuiver.duration_in(At(15u"minute"), 60u"minute") == 45u"minute"
+    @test BrewQuiver.duration_in(At(90u"minute"), 60u"minute") == 0u"minute"
+
+    # derived quantities of the liquor
+    x = Contents(wort(20u"L", 1.050u"sg"), [Portion(goldings, 10u"g")])
+    @test gravity(x) ≈ 1.050u"sg"
+    @test srm(x) == srm(liquor(x))
+    @test abv(Balling(), x) == abv(Balling(), liquor(x))
+end
+
+@testset "Arrows" begin
+    models = DEFAULT_MODELS
+    @test Transfer().amount === nothing
+    @test Transfer(25u"percent").amount == 0.25
+    @test Transfer(2u"L").amount == 2u"L"
+    @test Transfer(30u"g"; at = 5u"minute").timing == At(5u"minute")
+    @test_throws ArgumentError Transfer(30u"g"; at = 5u"minute", remaining = 5u"minute")
+    @test_throws DomainError Transfer(1.5)
+    @test_throws ArgumentError Transfer("all")
+
+    # a mash rest: the grain gives its extract, moisture and color, leaving spent grain
+    mash = Contents(water(15u"L")) + Contents(pale => 4u"kg") + Contents(invert => 1u"kg")
+    rested, rel = transform(MashRest(conversion = 90u"percent"), mash, models)
+    @test liquor(rested).extract ≈ extract_of(pale, 4u"kg", 0.9) + 1u"kg"
+    @test liquor(rested).water ≈ liquor(mash).water + 4u"kg" * pale.moisture
+    @test liquor(rested).color ≈ ustrip(u"lb", 4u"kg") * ustrip(u"°L", pale.color) +
+                                 ustrip(u"lb", 1u"kg") * ustrip(u"°L", invert.color)
+    @test grist(rested) ≈ 4u"kg"
+    @test total_mass(rested) ≈ total_mass(mash)
+    @test rel == (water = 0u"kg", co2 = 0u"g")
+    @test liquor(rested).temperature == 67u"°C"
+
+    # draining leaves the grain and what it absorbs, and what the vessel retains
+    drained, left = BrewQuiver._drain(Drain(absorption = 1u"L/kg", retain = 1u"L"), rested,
+                                      models.gravity)
+    @test volume(left) ≈ 5u"L"
+    @test isempty(solids(drained)) && solids(left) == solids(rested)
+    @test drained + left ≈ rested
+    @test_throws ArgumentError BrewQuiver._drain(Drain(absorption = 5u"L/kg"), rested,
+                                                 models.gravity)
+
+    # a boil: evaporation, and each hop isomerizing for its own time
+    w = Contents(wort(25u"L", 1.045u"sg"))
+    early = BrewQuiver.with_timing(Contents(goldings => 30u"g"), Remaining(60u"minute"))
+    late = BrewQuiver.with_timing(Contents(goldings => 30u"g"), At(50u"minute"))
+    after(c) = transform(Boil(time = 60u"minute", evaporation = 4u"L/hr"), w + c, models)
+    (b1, r1), (b2, r2), (b3, _) = after(early), after(late), after(early + late)
+    @test r1.water ≈ 4u"L" * BrewingFormulas.WATER_DENSITY_20C
+    @test volume(b1) ≈ 21u"L" rtol = 2e-3
+    @test liquor(b3).isoalpha ≈ liquor(b1).isoalpha + liquor(b2).isoalpha
+    @test liquor(b1).isoalpha > liquor(b2).isoalpha > 0u"mg"
+    @test total_mass(b3) + r1.water ≈ total_mass(w + early + late)
+
+    # a fermentation needs a culture or an attenuation
+    @test_throws ArgumentError transform(Ferment(), w, models)
+    f, rf = transform(Ferment(attenuation = 80u"percent"), w, models)
+    @test apparent_attenuation(f) ≈ 80u"percent"
+    @test total_mass(f) + uconvert(u"kg", rf.co2) ≈ total_mass(w)
+    @test only(solids(f)) isa YeastCake
+
+    # priming and forced carbonation
+    beer = Contents(liquor(f))
+    s = priming_mass(beer, 2.5u"vols")
+    primed, _ = transform(Prime(), beer + Contents(dextrose => s), models)
+    @test carbonation(primed) ≈ 2.5u"vols"
+    @test total_mass(primed) ≈ total_mass(beer) + s
+    @test s ≈ priming_sugar(CornSugar(), volume(beer), 2.5u"vols", 20u"°C") rtol = 2e-2
+    forced, rk = transform(Carbonate(2.5u"vols"), beer, models)
+    @test carbonation(forced) ≈ 2.5u"vols"
+    @test total_mass(forced) ≈ total_mass(beer) - uconvert(u"kg", rk.co2)
+end
+
+function single_batch(; priming = 110u"g")
     q = Quiver()
-    add!(q, :strike, Source(water(16u"L")))
-    add!(q, :mashtun, MashTun(grains = [pale => 4.5u"kg", crystal => 0.3u"kg"],
-                              sparge = [14u"L"]))
-    add!(q, :boil, Boil(time = 60u"minute", loss = 1u"L",
-                        hops = [goldings => 30u"g" => 60u"minute",
-                                goldings => 20u"g" => 10u"minute"]))
-    add!(q, :fermentor, Ferment(culture = ale, loss = 1u"L"))
-    add!(q, :bottles, Package(carbonation = 2.4u"vols"))
-    connect!(q, :strike => :mashtun)
-    connect!(q, (:mashtun, :running1) => :boil)
-    connect!(q, (:mashtun, :running2) => :boil)
-    connect!(q, :boil => :fermentor)
-    connect!(q, :fermentor => :bottles)
+    add!(q, :pale, pale => 4.5u"kg")
+    add!(q, :crystal, crystal => 0.3u"kg")
+    add!(q, :goldings, goldings => 50u"g")
+    add!(q, :yeast, ale => 1)
+    add!(q, :strike_water, water(16u"L"; temperature = 75u"°C"))
+    add!(q, :sparge_water, water(14u"L"; temperature = 80u"°C"))
+    add!(q, :priming_sugar, dextrose => priming)
+    add!(q, :mash, :rested, :grain_bed; vessel = :mashtun)
+    add!(q, :kettle, :wort; vessel = :kettle)
+    add!(q, :fermentor, :beer; vessel = :fermentor)
+    add!(q, :bottling, :bottles; vessel = :bottles)
+    connect!(q, [:strike_water, :pale, :crystal] => :mash)
+    connect!(q, :mash => :rested, MashRest(temperature = 67u"°C"))
+    connect!(q, :rested => :kettle, Drain())
+    connect!(q, :rested => :grain_bed)
+    connect!(q, :sparge_water => :grain_bed)
+    connect!(q, :grain_bed => :kettle, Drain())
+    connect!(q, :goldings => :kettle, Transfer(30u"g"; remaining = 60u"minute"))
+    connect!(q, :goldings => :kettle, Transfer(20u"g"; remaining = 10u"minute"))
+    connect!(q, :kettle => :wort, Boil(time = 60u"minute", evaporation = 4u"L/hr"))
+    connect!(q, :wort => :fermentor, Drain(retain = 1u"L"))
+    connect!(q, :yeast => :fermentor)
+    connect!(q, :fermentor => :beer, Ferment(temperature = 20u"°C"))
+    connect!(q, :priming_sugar => :bottling)
+    connect!(q, :beer => :bottling, Drain(retain = 1u"L"))
+    connect!(q, :bottling => :bottles, Prime())
     return q
+end
+
+# conservation over the whole quiver: the initial contents are all left over somewhere
+# (the products included), except what the arrows released
+function conserved(res, q)
+    initial = [q[n].initial for n in nodes(q)]
+    left = collect(values(leftovers(res)))
+    r = released(res)
+    return sum(total_mass, initial) ≈ sum(total_mass, left) + r.water + uconvert(u"kg", r.co2)
 end
 
 @testset "Single batch" begin
     q = single_batch()
-    @test nodes(q) == [:strike, :mashtun, :boil, :fermentor, :bottles]
+    @test nodes(q) == [:pale, :crystal, :goldings, :yeast, :strike_water, :sparge_water,
+                       :priming_sugar, :mash, :rested, :grain_bed, :kettle, :wort, :fermentor,
+                       :beer, :bottling, :bottles]
+    @test vessels(q)[:mashtun] == [:mash, :rested, :grain_bed]
     res = brew(q)
-    mt, bo, fe, bt = q[:mashtun], res[:boil, :out], res[:fermentor, :out], res[:bottles, :out]
 
-    # mash: the grain retains its absorption at each step
-    @test volume(res[:mashtun, :spent_grain]) ≈ grain_mass(mt) * mt.absorption
-    @test gravity(res[:mashtun, :running1]) > gravity(res[:mashtun, :running2])
-    dissolved = sum(mt.conversion * potential_extract(a.amount, a.ingredient.yield;
-                    moisture = a.ingredient.moisture) for a in mt.grains)
-    @test sum(res[:mashtun, p].extract for p in outports(mt)) ≈ dissolved
+    # mash: the grain retains its absorption at each drain
+    grain = 4.8u"kg"
+    @test grist(res[:rested]) ≈ grain
+    @test volume(leftover(res, :grain_bed)) ≈ grain * 1u"L/kg"
+    @test only(solids(leftover(res, :grain_bed))) isa Residue
+    runnings = [only(res[n => :kettle]).moved for n in (:rested, :grain_bed)]
+    @test gravity(runnings[1]) > gravity(runnings[2])
+    dissolved = extract_of(pale, 4.5u"kg", 0.95) + extract_of(crystal, 0.3u"kg", 0.95)
+    @test liquor(res[:kettle]).extract + liquor(leftover(res, :grain_bed)).extract ≈ dissolved
 
-    # boil: evaporation of 4 L in one hour, then the loss
-    pre = res[:boil].inputs[:in]
-    @test volume(pre) ≈ volume(res[:mashtun, :running1]) + volume(res[:mashtun, :running2]) rtol = 1e-3
-    @test volume(bo) + volume(res[:boil, :loss]) ≈ volume(pre) - 4u"L" rtol = 1e-3
-    @test 1.045u"sg" < gravity(bo) < 1.060u"sg"
-    @test 15u"IBU" < ibu(bo) < 30u"IBU"
+    # boil: 4 L evaporated in one hour, the hops become hop matter
+    @test volume(res[:kettle]) - volume(res[:wort]) ≈ 4u"L" rtol = 1e-2
+    @test only(res[:kettle => :wort]).released.water ≈ 4u"L" * BrewingFormulas.WATER_DENSITY_20C
+    @test 1.045u"sg" < gravity(res[:wort]) < 1.060u"sg"
+    @test 15u"IBU" < ibu(res[:wort]) < 30u"IBU"
+    @test only(solids(leftover(res, :wort))) isa HopMatter
+    @test volume(leftover(res, :wort)) ≈ 1u"L"
 
-    # fermentation: the apparent attenuation of the culture, with Balling's relations
-    @test original_gravity(fe) ≈ gravity(bo)
-    @test apparent_attenuation(fe) ≈ 75u"percent"
-    @test abv(fe) ≈ abv(Balling(), gravity(bo), gravity(fe)) rtol = 1e-6
-    @test extract_equivalent(fe + res[:fermentor, :loss]) ≈ extract_equivalent(bo)
-    @test carbonation(fe) ≈ residual_co2(20u"°C") rtol = 1e-6
+    # fermentation: the attenuation of the culture, with Balling's relations
+    wort_in = res[:fermentor]
+    beer = res[:beer]
+    @test original_gravity(beer) ≈ gravity(wort_in)
+    @test apparent_attenuation(beer) ≈ 75u"percent"
+    @test abv(beer) ≈ abv(Balling(), gravity(wort_in), gravity(beer)) rtol = 1e-6
+    @test extract_equivalent(beer) ≈ extract_equivalent(wort_in)
+    @test carbonation(beer) ≈ residual_co2(20u"°C") rtol = 1e-6
+    @test any(s -> s isa YeastCake, solids(leftover(res, :beer)))
 
-    # packaging
-    @test carbonation(bt) ≈ 2.4u"vols" rtol = 1e-6
-    @test abv(bt) > abv(fe)
-    # BrewingFormulas ignores the small change of volume due to the priming alcohol
-    @test priming_mass(q[:bottles], fe) ≈
-          priming_sugar(CornSugar(), volume(fe), 2.4u"vols", 20u"°C") rtol = 1e-2
-    forced = Package(carbonation = 2.4u"vols", sugar = nothing)
-    @test priming_mass(forced, fe) == 0u"g"
-    q[:bottles] = forced
-    @test abv(brew(q)[:bottles, :out]) ≈ abv(fe)
+    # bottle conditioning with the sugar lot, and the sugar for a given level
+    @test abv(res[:bottles]) > abv(beer)
+    @test isempty(solids(res[:bottles]))
+    racked = only(res[:beer => :bottling]).moved
+    s = priming_mass(racked, 2.4u"vols")
+    q2 = single_batch(priming = s)
+    @test carbonation(brew(q2)[:bottles]) ≈ 2.4u"vols"
+    @test products(res, q) == Dict(:bottles => res[:bottles])
 
-    @test products(res, q) == Dict(:bottles => bt)
+    # conservation of everything, and of the extract equivalent and the color
+    @test conserved(res, q)
+    left = collect(values(leftovers(res)))
+    # (up to the bottling: the priming sugar is fermented by molar ratios, not by Balling)
+    @test sum(extract_equivalent(c) for (n, c) in leftovers(res) if n != :bottles) +
+          extract_equivalent(racked) ≈ dissolved
+    @test sum(c -> liquor(c).color, left) ≈
+          (ustrip(u"lb", 4.5u"kg") * 3 + ustrip(u"lb", 0.3u"kg") * 60) rtol = 1e-12
 
     # other models
-    @test ibu(brew(single_batch(); models = (bitterness = Rager(),))[:boil, :out]) != ibu(bo)
+    @test ibu(brew(q; models = (bitterness = Rager(),))[:wort]) != ibu(res[:wort])
 end
 
 @testset "Quiver construction" begin
     q = single_batch()
-    @test_throws ArgumentError add!(q, :boil, Boil())
-    @test_throws ArgumentError connect!(q, :bottles => :strike)          # into a Source
-    @test_throws ArgumentError connect!(q, :bottles => :mashtun)         # a cycle
-    @test_throws ArgumentError connect!(q, :boil => :boil)
-    @test_throws ArgumentError connect!(q, :mashtun => :boil)            # no :out port
-    @test_throws ArgumentError connect!(q, (:mashtun, :running3) => :boil)
-    @test_throws ArgumentError connect!(q, :nowhere => :boil)
-    # replacing the mash tun by one without a second running breaks a transfer
-    @test_throws ArgumentError q[:mashtun] = MashTun(grains = [pale => 4u"kg"])
-    @test successors(q, :mashtun) == [:boil]
-    @test predecessors(q, :boil) == [:mashtun]
-    @test descendants(q, :boil) == [:boil, :fermentor, :bottles]
-    @test length(transfers(q)) == 5
+    @test_throws ArgumentError add!(q, :kettle)                         # already there
+    @test_throws ArgumentError add!(q, :x, 3u"kg")                       # not contents
+    @test_throws ArgumentError connect!(q, :bottles => :strike_water)    # a cycle
+    @test_throws ArgumentError connect!(q, :kettle => :kettle)
+    @test_throws ArgumentError connect!(q, :nowhere => :kettle)
+    @test_throws ArgumentError connect!(q, :kettle => :fermentor)       # beside a boil
+    @test_throws ArgumentError connect!(q, :rested => :wort, Boil())     # beside transfers
+    @test_throws ArgumentError connect!(q, :rested => :wort, Drain())    # a second drain
+    @test_throws ArgumentError q[:nowhere] = water(1u"L")
+    @test_throws ArgumentError q[:wort => :beer] = Transfer()
+    @test successors(q, :rested) == [:kettle, :grain_bed] ||
+          successors(q, :rested) == [:grain_bed, :kettle]
+    @test Set(predecessors(q, :kettle)) == Set([:rested, :grain_bed, :goldings])
+    @test descendants(q, :beer) == [:beer, :bottling, :bottles]
+    @test length(arrows(q)) == 17
+    @test length(q[:goldings => :kettle]) == 2
+    @test vessel(q, :wort) == :kettle && vessel(q, :pale) === nothing
 
-    disconnect!(q, :fermentor => :bottles)
-    @test isempty(successors(q, :fermentor))
+    disconnect!(q, :bottling => :bottles)
+    @test isempty(successors(q, :bottling))
     remove!(q, :bottles)
     @test !haskey(q, :bottles)
 
     # taking more than available
     q2 = Quiver()
-    add!(q2, :w, Source(water(10u"L")))
-    add!(q2, :a, Mix()); add!(q2, :b, Mix())
-    connect!(q2, :w => :a; amount = 6u"L")
-    connect!(q2, :w => :b; amount = 6u"L")
+    add!(q2, :w, water(10u"L"))
+    add!(q2, :a, :b)
+    connect!(q2, :w => :a, Transfer(6u"L"))
+    connect!(q2, :w => :b, Transfer(6u"L"))
     @test_throws ArgumentError brew(q2)
 
-    # explicit amounts, the rest, and leftovers
+    # amounts, the rest, and leftovers
     q3 = Quiver()
-    add!(q3, :w, Source(water(10u"L")))
-    add!(q3, :a, Mix()); add!(q3, :b, Mix()); add!(q3, :c, Mix())
-    connect!(q3, :w => :a; amount = 4u"L")
-    connect!(q3, :w => :b; amount = 0.1)
+    add!(q3, :w, water(10u"L"))
+    add!(q3, :a, :b, :c)
+    connect!(q3, :w => :a, Transfer(4u"L"))
+    connect!(q3, :w => :b, Transfer(0.1))
     connect!(q3, :w => :c)
     r3 = brew(q3)
-    @test volume(r3[:a, :out]) ≈ 4u"L"
-    @test volume(r3[:b, :out]) ≈ 1u"L"
-    @test volume(r3[:c, :out]) ≈ 5u"L"
-    @test isempty(r3[:w].leftovers)
+    @test volume(r3[:a]) ≈ 4u"L"
+    @test volume(r3[:b]) ≈ 1u"L"
+    @test volume(r3[:c]) ≈ 5u"L"
+    @test iszero(leftover(r3, :w))
     disconnect!(q3, :w => :c)
-    @test volume(brew(q3)[:w].leftovers[:out]) ≈ 5u"L"
+    @test volume(leftover(brew(q3), :w)) ≈ 5u"L"
 
-    # transfers of volumes from an empty port take empty liquors
+    # transfers by mass, from a lot
     q4 = Quiver()
-    add!(q4, :w, Source(zero(Liquor)))
-    add!(q4, :a, Mix()); add!(q4, :b, Mix())
-    connect!(q4, :w => :a; amount = 1u"L")
-    connect!(q4, :w => :b; amount = 1u"L")
+    add!(q4, :hops, goldings => 100u"g")
+    add!(q4, :a, :b)
+    connect!(q4, :hops => :a, Transfer(30u"g"))
+    connect!(q4, :hops => :b, Transfer(50u"percent"))
     r4 = brew(q4)
-    @test iszero(r4[:a, :out]) && iszero(r4[:b, :out])
+    @test only(solids(r4[:a])).amount ≈ 30u"g"
+    @test only(solids(r4[:b])).amount ≈ 50u"g"
+    @test only(solids(leftover(r4, :hops))).amount ≈ 20u"g"
 
-    # the order of construction is kept after removing a process
+    # transfers of volumes from an empty node take nothing
     q5 = Quiver()
-    add!(q5, :w, Source(water(10u"L")))
+    add!(q5, :w, :a, :b)
+    connect!(q5, :w => :a, Transfer(1u"L"))
+    connect!(q5, :w => :b, Transfer(1u"L"))
+    r5 = brew(q5)
+    @test iszero(r5[:a]) && iszero(r5[:b])
+
+    # the order of construction is kept after removing a node
+    q6 = Quiver()
+    add!(q6, :w, water(10u"L"))
     for n in (:b, :c, :d, :e)
-        add!(q5, n, Mix())
-        connect!(q5, :w => n; amount = 0.25)
+        add!(q6, n)
+        connect!(q6, :w => n, Transfer(0.25))
     end
-    remove!(q5, :b)
-    @test nodes(q5) == [:w, :c, :d, :e]
-    add!(q5, :b, Mix())
-    @test nodes(q5) == [:w, :c, :d, :e, :b]
-    q5[:c] = Mix()                                  # replacing keeps the place
-    @test nodes(q5) == [:w, :c, :d, :e, :b]
+    remove!(q6, :b)
+    @test nodes(q6) == [:w, :c, :d, :e]
+    add!(q6, :b)
+    @test nodes(q6) == [:w, :c, :d, :e, :b]
+    q6[:w] = water(20u"L")                          # replacing keeps the place
+    @test nodes(q6) == [:w, :c, :d, :e, :b]
 end
 
 @testset "Rebrew" begin
     q = single_batch()
     res = brew(q)
-    q[:fermentor] = Ferment(culture = ale, attenuation = 80u"percent", loss = 1u"L")
+    q[:fermentor => :beer] = Ferment(attenuation = 80u"percent")
     rebrew!(res, q, :fermentor)
     fresh = brew(q)
-    for n in nodes(q), (p, l) in fresh[n].outputs
-        @test res[n, p] ≈ l
+    for n in nodes(q)
+        @test res[n] ≈ fresh[n]
     end
-    @test apparent_attenuation(res[:fermentor, :out]) ≈ 80u"percent"
+    @test apparent_attenuation(res[:beer]) ≈ 80u"percent"
 
     # changes of the structure: a rebrew must match a fresh brew
     function same(res, q)
         fresh = brew(q)
         Set(keys(res.nodes)) == Set(keys(fresh.nodes)) || return false
-        Set(keys(res.flows)) == Set(keys(fresh.flows)) || return false
+        Set(keys(res.arrows)) == Set(keys(fresh.arrows)) || return false
         res.order == fresh.order || return false
-        all(res[n, p] ≈ l for n in nodes(q) for (p, l) in fresh[n].outputs) &&
-            all(res[n].leftovers == fresh[n].leftovers || keys(res[n].leftovers) ==
-                keys(fresh[n].leftovers) && all(res[n].leftovers[k] ≈ fresh[n].leftovers[k]
-                                                for k in keys(fresh[n].leftovers))
-                for n in nodes(q))
+        return all(res[n] ≈ fresh[n] && leftover(res, n) ≈ leftover(fresh, n) for n in nodes(q))
     end
     q = Quiver()
-    add!(q, :w, Source(water(10u"L")))
-    for n in (:a, :b, :c)
-        add!(q, n, Mix())
-    end
-    connect!(q, :w => :a; amount = 2u"L")
-    connect!(q, :w => :b; amount = 3u"L")
+    add!(q, :w, water(10u"L"))
+    add!(q, :a, :b, :c, :blend)
+    connect!(q, :w => :a, Transfer(2u"L"))
+    connect!(q, :w => :b, Transfer(3u"L"))
     connect!(q, :w => :c)
-    add!(q, :blend, Mix())
-    connect!(q, :a => :blend); connect!(q, :c => :blend)
+    connect!(q, [:a, :c] => :blend)
     res = brew(q)
-    @test volume(res[:c, :out]) ≈ 5u"L"
+    @test volume(res[:c]) ≈ 5u"L"
 
     # disconnecting: the destination is emptied, the source keeps a leftover
     disconnect!(q, :w => :c)
-    rebrew!(res, q, :blend)                         # the change is found from the flows
-    @test iszero(res[:c, :out])
-    @test volume(res[:blend, :out]) ≈ 2u"L"
-    @test !haskey(res.flows, (:w, :c))
+    rebrew!(res, q, :blend)                         # the change is found from the arrows
+    @test iszero(res[:c])
+    @test volume(res[:blend]) ≈ 2u"L"
+    @test !haskey(res.arrows, (:w, :c))
     @test same(res, q)
 
-    # connecting from a process that did not change
+    # connecting from a node that did not change
     connect!(q, :b => :blend)
     rebrew!(res, q, :blend)
-    @test volume(res[:blend, :out]) ≈ 5u"L"
+    @test volume(res[:blend]) ≈ 5u"L"
     @test same(res, q)
 
-    # a new transfer along an existing edge
-    connect!(q, :w => :c; amount = 1u"L")
+    # a new arrow between nodes already joined
+    connect!(q, :w => :c, Transfer(1u"L"))
     connect!(q, :w => :c)
     rebrew!(res, q, :c)
-    @test volume(res[:c, :out]) ≈ 5u"L"
+    @test volume(res[:c]) ≈ 5u"L"
     @test same(res, q)
 
-    # adding and removing processes
-    add!(q, :d, Mix())
-    connect!(q, :blend => :d; amount = 0.5)
+    # adding and removing nodes
+    add!(q, :d)
+    connect!(q, :blend => :d, Transfer(0.5))
     remove!(q, :a)
     rebrew!(res, q, :d)
     @test !haskey(res.nodes, :a)
-    @test volume(res[:d, :out]) ≈ 5u"L"            # half of 3 L from :b and 7 L from :c
+    @test volume(res[:d]) ≈ 5u"L"                 # half of 3 L from :b and 7 L from :c
     @test same(res, q)
     @test_throws ArgumentError rebrew!(res, q, :a)
 end
@@ -262,75 +412,81 @@ end
 # Pale Ale and Bitter, by parti-gyle from two mashes into three boils and fermentors.
 function fullers()
     q = Quiver()
-    for (i, grains) in enumerate(([pale => 40u"kg", crystal => 3u"kg"],
-                                  [pale => 35u"kg", sugar => 0u"kg"]))
-        add!(q, Symbol(:strike, i), Source(water(110u"L"; temperature = 75u"°C")))
-        add!(q, Symbol(:mash, i), MashTun(grains = filter(p -> p.second > 0u"kg", grains),
-                                          sparge = [80u"L", 80u"L"]))
-        connect!(q, Symbol(:strike, i) => Symbol(:mash, i))
+    add!(q, :goldings, goldings => 1.5u"kg")
+    add!(q, :invert, invert => 4u"kg")
+    for i in 1:3
+        add!(q, Symbol(:yeast, i), ale => 1)
+        add!(q, Symbol(:kettle, i), Symbol(:wort, i); vessel = Symbol(:copper, i))
+        add!(q, Symbol(:fermentor, i), Symbol(:beer, i); vessel = Symbol(:fv, i))
+        add!(q, Symbol(:bright, i); vessel = Symbol(:tank, i))
+    end
+    for (m, grist) in enumerate(([pale => 40u"kg", crystal => 3u"kg"], [pale => 35u"kg"]))
+        mash = Symbol(:mash, m)
+        beds = [Symbol(:bed, m, :_, i) for i in 1:3]
+        lots = [Symbol(:grist, m, :_, j) for j in eachindex(grist)]
+        foreach((l, g) -> add!(q, l, g), lots, grist)
+        add!(q, Symbol(:strike, m), water(110u"L"; temperature = 75u"°C"))
+        add!(q, mash, beds...; vessel = Symbol(:mashtun, m))
+        connect!(q, [Symbol(:strike, m); lots] => mash)
+        connect!(q, mash => beds[1], MashRest(temperature = 66u"°C"))
+        for i in 1:3
+            if i > 1                                         # sparge the grain bed
+                add!(q, Symbol(:sparge, m, :_, i), water(80u"L"; temperature = 80u"°C"))
+                connect!(q, beds[i - 1] => beds[i])
+                connect!(q, Symbol(:sparge, m, :_, i) => beds[i])
+            end
+            connect!(q, beds[i] => Symbol(:kettle, i), Drain())
+        end
     end
     for i in 1:3
-        add!(q, Symbol(:boil, i), Boil(time = 90u"minute", evaporation = 8u"L/hr",
-                                       hops = [goldings => (500 - 120i) * u"g" => 90u"minute"],
-                                       fermentables = i == 1 ? [sugar => 4u"kg"] : []))
-        add!(q, Symbol(:fermentor, i), Ferment(culture = ale))
-        connect!(q, Symbol(:boil, i) => Symbol(:fermentor, i))
-        # the i-th runnings of both mashes go to the i-th boil
-        connect!(q, (:mash1, Symbol(:running, i)) => Symbol(:boil, i))
-        connect!(q, (:mash2, Symbol(:running, i)) => Symbol(:boil, i))
+        kettle, wort, fv, beer, bright =
+            (Symbol(x, i) for x in (:kettle, :wort, :fermentor, :beer, :bright))
+        connect!(q, :goldings => kettle, Transfer((750 - 250(i - 1)) * u"g"; remaining = 90u"minute"))
+        i == 1 && connect!(q, :invert => kettle)
+        connect!(q, kettle => wort, Boil(time = 90u"minute", evaporation = 8u"L/hr"))
+        connect!(q, wort => fv, Drain(retain = 2u"L"))
+        connect!(q, Symbol(:yeast, i) => fv)
+        connect!(q, fv => beer, Ferment(temperature = 19u"°C", time = 7u"d"))
+        connect!(q, beer => bright, Drain(retain = 2u"L"))
     end
-    for beer in (:barley_wine, :esb, :pale_ale, :bitter)
-        add!(q, beer, Mix())
-    end
-    connect!(q, :fermentor1 => :barley_wine; amount = 0.5)
-    connect!(q, :fermentor1 => :esb)
-    connect!(q, :fermentor2 => :esb; amount = 0.4)
-    connect!(q, :fermentor2 => :pale_ale)
-    connect!(q, :fermentor3 => :pale_ale; amount = 0.3)
-    connect!(q, :fermentor3 => :bitter)
+    add!(q, :barley_wine, :esb, :pale_ale, :bitter)
+    connect!(q, :bright1 => :barley_wine, Transfer(50u"percent"))
+    connect!(q, :bright1 => :esb)
+    connect!(q, :bright2 => :esb, Transfer(40u"percent"))
+    connect!(q, :bright2 => :pale_ale)
+    connect!(q, :bright3 => :pale_ale, Transfer(30u"percent"))
+    connect!(q, :bright3 => :bitter)
     return q
 end
 
 @testset "Parti-gyle (Fuller's)" begin
     q = fullers()
     res = brew(q)
-    og(n) = original_gravity(res[n, :out])
+    og(n) = original_gravity(res[n])
 
     # the runnings get weaker, and so do the boils
-    @test gravity(res[:boil1, :out]) > gravity(res[:boil2, :out]) > gravity(res[:boil3, :out])
+    @test gravity(res[:wort1]) > gravity(res[:wort2]) > gravity(res[:wort3])
     @test og(:barley_wine) > og(:esb) > og(:pale_ale) > og(:bitter)
-    @test og(:barley_wine) ≈ gravity(res[:boil1, :out])
-    @test og(:bitter) ≈ gravity(res[:boil3, :out])
-    @test abv(res[:barley_wine, :out]) > abv(res[:esb, :out]) > abv(res[:bitter, :out])
+    @test og(:barley_wine) ≈ gravity(res[:wort1])
+    @test og(:bitter) ≈ gravity(res[:wort3])
+    @test abv(res[:barley_wine]) > abv(res[:esb]) > abv(res[:bitter])
+    @test all(isempty(solids(res[b])) for b in (:barley_wine, :esb, :pale_ale, :bitter))
 
     # a blend is the exact mixture of its parts
-    esb = res[:esb, :out]
-    @test esb ≈ 0.5 * res[:fermentor1, :out] + 0.4 * res[:fermentor2, :out]
-    @test volume(res[:barley_wine, :out]) ≈ 0.5 * volume(res[:fermentor1, :out])
-
+    @test res[:esb] ≈ 0.5 * res[:bright1] + 0.4 * res[:bright2]
+    @test volume(res[:barley_wine]) ≈ 0.5 * volume(res[:bright1])
     @test Set(keys(products(res, q))) == Set([:barley_wine, :esb, :pale_ale, :bitter])
 
-    # conservation over the whole quiver: whatever is not transferred is left over at some
-    # port (the products included), so the leftovers account for everything
-    ends = [l for n in nodes(q) for l in values(res[n].leftovers)]
-    @test all(l -> any(e -> e === l, ends), values(products(res, q)))
-    total(f) = sum(f, ends)
-
-    # water: strike and sparge water, plus the moisture of the grains, minus evaporation
-    moisture = sum(a.amount * a.ingredient.moisture for m in (:mash1, :mash2) for a in q[m].grains)
-    boiled_off = sum(res[b].inputs[:in].water - res[b, :out].water - res[b, :loss].water
-                     for b in (:boil1, :boil2, :boil3))
-    @test total(l -> l.water) ≈ 2 * (110 + 80 + 80) * 0.998203u"kg" + moisture - boiled_off
-    dissolved = sum(sum(q[m].conversion * potential_extract(a.amount, a.ingredient.yield;
-                        moisture = a.ingredient.moisture) for a in q[m].grains)
-                    for m in (:mash1, :mash2)) + 4u"kg"            # plus the boil sugar
-    @test total(extract_equivalent) ≈ dissolved
-    @test total(l -> l.color) ≈ sum(res[m, p].color for m in (:mash1, :mash2)
-                                    for p in outports(q[m])) +
-                                ustrip(u"lb", 4u"kg") * ustrip(u"°L", sugar.color)
-    evaporated = sum(volume(res[b].inputs[:in] + BrewQuiver._dissolve(q[b].fermentables, 1.0)) -
-                     volume(res[b, :out]) for b in (:boil1, :boil2, :boil3))
-    @test evaporated ≈ 3 * 8u"L/hr" * 90u"minute" rtol = 1e-2
+    # conservation of everything, and of the extract equivalent and the color
+    @test conserved(res, q)
+    left = collect(values(leftovers(res)))
+    dissolved = extract_of(pale, 75u"kg", 0.95) + extract_of(crystal, 3u"kg", 0.95) + 4u"kg"
+    @test sum(extract_equivalent, left) ≈ dissolved
+    @test sum(c -> liquor(c).color, left) ≈
+          ustrip(u"lb", 75u"kg") * 3 + ustrip(u"lb", 3u"kg") * 60 +
+          ustrip(u"lb", 4u"kg") * ustrip(u"°L", invert.color)
+    @test all(iszero(leftover(res, n)) for n in (:goldings, :invert))
+    @test released(res).water ≈ 3 * 8u"L/hr" * 90u"minute" * BrewingFormulas.WATER_DENSITY_20C
 end
 
 end

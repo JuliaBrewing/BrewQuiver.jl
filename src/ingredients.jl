@@ -1,4 +1,4 @@
-# Ingredients, as working types with Unitful quantities, and their additions to processes.
+# Ingredients, as working types with Unitful quantities.
 
 """
     AbstractIngredient
@@ -38,6 +38,9 @@ function Fermentable(name::AbstractString; kind::Symbol = :grain, yield = nothin
     return Fermentable(name, kind, y, uconvert(u"SRM", float(color)), _fraction(moisture))
 end
 
+# grains need a mash to give their extract; the other fermentables dissolve
+soluble(f::Fermentable) = f.kind !== :grain
+
 """
     Hop(name; alpha, form = :pellet)
 
@@ -76,30 +79,3 @@ struct Culture <: AbstractIngredient
     attenuation::Float64
 end
 Culture(name::AbstractString; attenuation = 75u"percent") = Culture(name, _fraction(attenuation))
-
-"""
-    Addition(ingredient, amount; time = nothing)
-
-The addition of an `amount` (a mass) of `ingredient` to a process, possibly at a given
-`time`, whose meaning depends on the process (e.g. the boiling time of a hop).
-
-In the processes, additions can also be given as pairs, `ingredient => amount` or
-`ingredient => amount => time`.
-"""
-struct Addition{I <: AbstractIngredient}
-    ingredient::I
-    amount::KgQ
-    time::Union{Nothing, MinQ}
-end
-Addition(i::AbstractIngredient, amount::Unitful.Mass; time = nothing) =
-    Addition(i, uconvert(u"kg", float(amount)),
-             time === nothing ? nothing : uconvert(u"minute", float(time)))
-
-_addition(::Type{I}, a::Addition{I}) where {I} = a
-_addition(::Type{I}, p::Pair{I, <:Unitful.Mass}) where {I} = Addition(p.first, p.second)
-_addition(::Type{I}, p::Pair{I, <:Pair}) where {I} =
-    Addition(p.first, p.second.first; time = p.second.second)
-_addition(::Type{I}, x) where {I} =
-    throw(ArgumentError("cannot make an addition of a $I from $x; use `ingredient => amount`" *
-                        " or `ingredient => amount => time`"))
-_additions(::Type{I}, xs) where {I} = Addition{I}[_addition(I, x) for x in xs]
