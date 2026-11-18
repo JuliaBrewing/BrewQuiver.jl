@@ -42,6 +42,7 @@ include("liquor.jl")
 include("ingredients.jl")
 include("contents.jl")
 include("arrows.jl")
+include("vessels.jl")
 include("quiver.jl")
 include("brew.jl")
 include("provenance.jl")
@@ -68,6 +69,7 @@ export Transfer, Drain, MashRest, Boil, Chill, Ferment, Prime, Carbonate, primin
 
 # quiver
 export Quiver, Node, add!, connect!, disconnect!, remove!, nodes, arrows, vessel, vessels
+export Vessel, equip!, equipment, overfilled
 export predecessors, successors, descendants
 
 # brewing

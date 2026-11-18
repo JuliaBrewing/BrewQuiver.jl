@@ -28,11 +28,13 @@ struct Quiver{G}
     # (the codes of the vertices change when a vertex is removed, so they can't be used)
     rank::Dict{Symbol, Int}
     added::Base.RefValue{Int}
+    # the equipment of the vessels, by name
+    equipment::Dict{Symbol, Vessel}
 end
 
 Quiver() = Quiver(MetaGraph(DiGraph(); label_type = Symbol, vertex_data_type = Node,
                             edge_data_type = Vector{AbstractArrow}, graph_data = nothing),
-                  Dict{Symbol, Int}(), Ref(0))
+                  Dict{Symbol, Int}(), Ref(0), Dict{Symbol, Vessel}())
 
 Base.haskey(q::Quiver, label::Symbol) = haskey(q.graph, label)
 Base.getindex(q::Quiver, label::Symbol) = q.graph[label]
@@ -44,6 +46,35 @@ Base.getindex(q::Quiver, e::Pair{Symbol, Symbol}) = q.graph[e.first, e.second]
 The vessel of the node `label`, or `nothing`.
 """
 vessel(q::Quiver, label::Symbol) = q[label].vessel
+
+"""
+    equip!(q::Quiver, vessel::Symbol, equipment::Vessel)
+
+Attaches the `equipment` to the `vessel` of `q`: the arrows leaving the nodes in that
+vessel take from it what they do not give themselves (a [`Drain`](@ref) its absorption,
+dead space and drain rate, a [`Boil`](@ref) its evaporation rate), and its capacity is
+checked by [`overfilled`](@ref). After a change of equipment, brew again.
+
+```julia
+equip!(q, :kettle, Vessel(capacity = 40u"L", dead_space = 1.5u"L", evaporation = 4u"L/hr",
+                          drain_rate = 1u"L/minute"))
+```
+"""
+function equip!(q::Quiver, name::Symbol, v::Vessel)
+    q.equipment[name] = v
+    return q
+end
+
+"""
+    equipment(q::Quiver, vessel::Symbol)
+
+The [`Vessel`](@ref) attached to `vessel` with [`equip!`](@ref), or `nothing`.
+"""
+equipment(q::Quiver, name::Symbol) = get(q.equipment, name, nothing)
+
+# the equipment of the vessel of the node `label`, or `nothing`
+_equipment_of(q::Quiver, label::Symbol) =
+    (v = vessel(q, label); v === nothing ? nothing : equipment(q, v))
 
 _set!(q::Quiver, label::Symbol, n::Node) =
     (haskey(q, label) || (q.rank[label] = (q.added[] += 1)); q.graph[label] = n; q)

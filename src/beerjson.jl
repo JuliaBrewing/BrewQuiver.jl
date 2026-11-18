@@ -104,27 +104,29 @@ and the boil) is the recipe's.
 """
 struct BrewhouseEfficiency <: AbstractCalibration end
 
-# equipment: the parameters of the vessels used by `Quiver`, or `nothing`
+"""
+    Vessel(item::EquipmentItemType)
+
+The vessel of a BeerJSON equipment item: its maximum volume as capacity, its loss as dead
+space, its grain absorption rate, its boil rate per hour as evaporation, and its drain rate.
+"""
+Vessel(it::BJ.EquipmentItemType) = Vessel(
+    name = strip(it.name), capacity = _q(it.maximum_volume), dead_space = _q(it.loss),
+    absorption = _q(it.grain_absorption_rate),
+    evaporation = it.boil_rate_per_hour === nothing ? nothing : _q(it.boil_rate_per_hour) / u"hr",
+    drain_rate = it.drain_rate_per_minute === nothing ? nothing : _q(it.drain_rate_per_minute) / u"minute")
+
+# the vessels of an equipment used by `Quiver`, by the names of its vessels
 function _equipment(e::Union{Nothing, BJ.EquipmentType})
-    p = Dict{Symbol, Any}(:absorption => nothing, :dead_space => nothing,
-                          :kettle_loss => nothing, :boil_rate => nothing,
-                          :fermenter_loss => nothing)
-    e === nothing && return p
+    vs = Dict{Symbol, Vessel}()
+    e === nothing && return vs
     for it in e.equipment_items
         form = it.form.value
-        if form in ("Mash Tun", "Lauter Tun")
-            it.grain_absorption_rate === nothing ||
-                (p[:absorption] = uconvert(u"L/kg", _q(it.grain_absorption_rate)))
-            p[:dead_space] = _q(it.loss)
-        elseif form == "Brew Kettle"
-            p[:kettle_loss] = _q(it.loss)
-            it.boil_rate_per_hour === nothing ||
-                (p[:boil_rate] = uconvert(u"L/hr", _q(it.boil_rate_per_hour) / u"hr"))
-        elseif form == "Fermenter"
-            p[:fermenter_loss] = _q(it.loss)
-        end
+        name = form in ("Mash Tun", "Lauter Tun") ? :mashtun : form == "Brew Kettle" ? :kettle :
+               form == "Fermenter" ? :fermentor : nothing
+        name === nothing || (vs[name] = Vessel(it))
     end
-    return p
+    return vs
 end
 
 # a label for an ingredient lot, from its name
@@ -272,8 +274,10 @@ sparges. The volumes the recipe does not give are solved for its targets:
 - the kettle loss, from the `equipment`, or else so that the batch size reaches the
   fermentor.
 
-The `equipment` (a BeerJSON `EquipmentType`) also gives the grain absorption and dead space
-of the mash tun and the loss of the fermenter. The `calibration` ([`NoCalibration`](@ref)
+The `equipment` (a BeerJSON `EquipmentType`) is attached to the vessels `:mashtun`,
+`:kettle` and `:fermentor` (see [`Vessel`](@ref) and [`equip!`](@ref)), giving the grain
+absorption, dead spaces and losses, the boil rate, the capacities and the drain rates; the
+evaporation rate and kettle loss solved for the recipe are attached to the kettle. The `calibration` ([`NoCalibration`](@ref)
 or [`BrewhouseEfficiency`](@ref)) sets the conversion of the mash. Cultures without
 attenuation get the apparent attenuation of the recipe's original and final gravities, or
 else `attenuation`, with a warning.
@@ -292,7 +296,8 @@ supported yet.
 function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = nothing,
                 calibration::AbstractCalibration = NoCalibration(),
                 mash_ratio = 3u"L/kg", attenuation = 75u"percent")
-    eqp = _equipment(equipment)
+    vessels = _equipment(equipment)
+    kv = get(vessels, :kettle, Vessel(name = "Kettle"))
     batch = uconvert(u"L", _q(r.batch_size))
     boil_time = r.boil === nothing ? (@warn("$(repr(r.name)) has no boil: boiling 60 minutes");
                                       60u"minute") : uconvert(u"minute", _q(r.boil.boil_time))
@@ -311,10 +316,10 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     isempty(adds) && throw(ArgumentError("the recipe $(repr(r.name)) has no ingredients"))
 
     # volumes and rates
-    kettle_loss = eqp[:kettle_loss]
+    kettle_loss = kv.dead_space
     pre_boil = r.boil === nothing || r.boil.pre_boil_size === nothing ? nothing :
                uconvert(u"L", _q(r.boil.pre_boil_size))
-    rate = something(eqp[:boil_rate],
+    rate = something(kv.evaporation,
         pre_boil === nothing ? 4.0u"L/hr" :
         max(0.0u"L/hr", uconvert(u"L/hr", (pre_boil - batch - something(kettle_loss, 0u"L")) / boil_time)))
     pre_boil = something(pre_boil, batch + something(kettle_loss, 0u"L") + rate * boil_time)
@@ -378,8 +383,11 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     end
 
     # the mash and the sparges
-    absorption = something(eqp[:absorption], Drain().absorption)
-    dead_space = something(eqp[:dead_space], 0u"L")
+    # the equipment: what the arrows leaving the stages of each vessel take
+    haskey(vessels, :mashtun) && equip!(q, :mashtun, vessels[:mashtun])
+    kv = _with(kv; evaporation = rate)
+    equip!(q, :kettle, kv)
+    haskey(vessels, :fermentor) && equip!(q, :fermentor, vessels[:fermentor])
     mashrest(rest, c) = MashRest(temperature = rest[1], time = rest[2], conversion = c)
     if !isempty(mashed)
         connect!(q, :strike_water => :mash)
@@ -389,7 +397,7 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
             connect!(q, prev => Symbol(:mash_, k), mashrest(rest, conversion))
             prev = Symbol(:mash_, k)
         end
-        drain = Drain(; absorption, retain = dead_space)
+        drain = Drain()
         connect!(q, prev => :kettle, drain)
         for k in eachindex(sparges)
             bed = Symbol(:grain_bed_, k)
@@ -403,14 +411,14 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
     end
 
     # the boil, the fermentation and the packaging
-    connect!(q, :kettle => :wort, Boil(time = boil_time, evaporation = rate))
+    connect!(q, :kettle => :wort, Boil(time = boil_time))
     connect!(q, :wort => :chilled, Chill(temperature = Tferm))
-    connect!(q, :chilled => :fermentor, Drain(retain = something(kettle_loss, 0u"L")))
+    connect!(q, :chilled => :fermentor, Drain())
     has_culture = any(a -> a[1] isa Culture && a[3] === :fermentation, adds)
     connect!(q, :fermentor => :beer,
              Ferment(temperature = Tferm, time = tferm,
                      attenuation = has_culture ? nothing : something(att, attenuation)))
-    connect!(q, :beer => :packaging, Drain(retain = something(eqp[:fermenter_loss], 0u"L")))
+    connect!(q, :beer => :packaging, Drain())
     r.carbonation === nothing ||
         connect!(q, :packaging => :packaged, Carbonate(r.carbonation * u"vols"))
 
@@ -437,7 +445,7 @@ function Quiver(r::BJ.RecipeType; equipment::Union{Nothing, BJ.EquipmentType} = 
             new = max(0.0u"L", volume(res[:chilled]) - batch)
             moved |= abs(new - loss) > 1e-6u"L"
             loss = new
-            q[:chilled => :fermentor] = Drain(retain = loss)
+            equip!(q, :kettle, _with(kv; dead_space = loss))
         end
         if calibration isa BrewhouseEfficiency && !isempty(mashed)
             e = _brewhouse_efficiency(res, q)

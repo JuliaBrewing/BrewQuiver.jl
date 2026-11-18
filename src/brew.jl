@@ -173,7 +173,8 @@ end
 # (destination, index), and the leftover
 function _pass(q, label, c::Contents, models)
     eq = models.gravity
-    outs = _outgoing(q, label)
+    ves = _equipment_of(q, label)
+    outs = [(d, i, _resolve(a, ves)) for (d, i, a) in _outgoing(q, label)]
     results = Dict{Tuple{Symbol, Int}, ArrowResult}()
     # a transformation takes everything
     if length(outs) == 1 && outs[1][3] isa AbstractTransformation
@@ -208,4 +209,24 @@ function _pass(q, label, c::Contents, models)
         results[(d, i)] = ArrowResult(with_timing((1 / length(others)) * rest, a.timing))
     end
     return results, zero(Contents)
+end
+
+"""
+    overfilled(res::BrewResult, q::Quiver)
+
+The nodes whose contents exceed the capacity of their [`Vessel`](@ref), as a vector of
+NamedTuples `(node, vessel, volume, capacity)`. The volume of a mash includes the grain it
+displaces (see `mash_volume`); volumes are at 20 °C.
+"""
+function overfilled(res::BrewResult, q::Quiver)
+    out = @NamedTuple{node::Symbol, vessel::Symbol, volume::LQ, capacity::LQ}[]
+    for n in res.order
+        v = _equipment_of(q, n)
+        (v === nothing || v.capacity === nothing) && continue
+        c = res[n]
+        vol = uconvert(u"L", mash_volume(volume(c; eq = res.models.gravity), grist(c)))
+        vol > v.capacity && push!(out, (node = n, vessel = vessel(q, n), volume = vol,
+                                        capacity = v.capacity))
+    end
+    return out
 end

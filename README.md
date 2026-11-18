@@ -85,6 +85,24 @@ shares of its lots: `recipe(res, q, product)`, `recipes(res, q)`, and
 `write_beerjson(path, res, q)` for a BeerJSON document. A recipe exported from a quiver and
 imported back (with the equipment of its kettle) brews to the same wort and beer.
 
+## Equipment
+
+A `Vessel` describes the equipment of a vessel: its capacity, its dead space (the liquid
+left behind when drained: under a false bottom, the trub in a kettle, the yeast cake), the
+grain absorption of a mash tun, the evaporation rate of a kettle and the drain rate.
+`equip!(q, :kettle, Vessel(...))` attaches it to the stages tagged with that vessel, and
+the arrows leaving them take from it what they do not give themselves: a plain `Drain()`
+leaves the grain absorption and the dead space behind and takes the time of the drain
+rate, and a `Boil(time = 60u"minute")` evaporates at the rate of the kettle.
+`overfilled(res, q)` lists the stages whose contents (with the grain displaced in a mash)
+exceed the capacity of their vessel. The equipment of a BeerJSON document becomes the
+vessels of the quiver of a recipe.
+
+```julia
+equip!(q, :kettle, Vessel(name = "Kettle", capacity = 36u"L", evaporation = 4u"L/hr",
+                          dead_space = 1u"L", drain_rate = 1.5u"L/minute"))
+```
+
 ## Timeline
 
 Every arrow has a `duration`: the `time` of a transformation (the mash rest, the boil, the
@@ -99,15 +117,15 @@ booked for two contents at once.
 
 ```julia
 s = timeline(q; start = 8u"hr")
-s[:kettle]             # (arrive = 540 min, ready = 575 min, leave = 635 min)
+s[:kettle]             # when the kettle is filled, ready and emptied
 vesselchart(s; to = 13u"hr")
 ```
 
 ```
             8:00                                                   13:00
-  mashtun   ████████████▒▒▒▒▒▒▒
-  kettle                ▒▒▒▒▒▒▒█████████████████▒▒▒
-  fermentor                                     ▒▒▒█████████████████████
+  mashtun   ████████████▒▒▒▒▒
+  kettle                ▒▒▒▒▒█████████████████▒▒▒
+  fermentor                                   ▒▒▒███████████████████████
 ```
 
 ## References

@@ -36,7 +36,8 @@ _timed(a) = a isa Transfer && a.timing !== nothing
 _rest(a) = a isa Transfer && a.amount === nothing
 
 """
-    timeline(q::Quiver; start = 0u"minute") -> Timeline
+    timeline(q::Quiver; start = 0u"minute", models = (;)) -> Timeline
+    timeline(res::BrewResult, q::Quiver; start = 0u"minute") -> Timeline
 
 The timeline of `q`: when the contents of each node arrive, are all in, and leave, and when
 each arrow runs, from the [`duration`](@ref)s of the arrows, as early as the arrows allow
@@ -51,10 +52,27 @@ each arrow runs, from the [`duration`](@ref)s of the arrows, as early as the arr
   too, and the transfers of the rest when those end, e.g. the grain bed is sparged after
   the first runnings are drained.
 
-Vessels are not checked for being free: see [`overlaps`](@ref).
+A drain without a `duration` from a vessel with a drain rate (see [`Vessel`](@ref)) takes
+the time to drain the volume it moves, from the brew `res` of `q` (brewed with `models`
+when not given). Vessels are not checked for being free: see [`overlaps`](@ref).
 """
-function timeline(q::Quiver; start = 0u"minute")
+function timeline(q::Quiver; start = 0u"minute", models::NamedTuple = (;))
+    rated = any(a isa Drain && a.duration === nothing &&
+                (v = _equipment_of(q, s); v !== nothing && v.drain_rate !== nothing)
+                for (s, _, a) in arrows(q))
+    return _timeline(q, rated ? brew(q; models) : nothing, start)
+end
+timeline(res::BrewResult, q::Quiver; start = 0u"minute") = _timeline(q, res, start)
+
+function _timeline(q::Quiver, res, start)
     t0 = _minutes(start)
+    # the duration of the arrow `a`, the `i`-th from `n` to `d`
+    function dur(a, n, d, i)
+        v = _equipment_of(q, n)
+        a isa Drain && a.duration === nothing || return duration(_resolve(a, v))
+        (v === nothing || v.drain_rate === nothing || res === nothing) && return 0.0u"minute"
+        return uconvert(u"minute", volume(res[n => d][i].moved) / v.drain_rate)
+    end
     iv = Dict{Tuple{Symbol, Symbol}, Vector{Union{Nothing, Interval}}}()
     for (s, d) in edge_labels(q.graph)
         iv[(s, d)] = fill(nothing, length(q[s => d]))
@@ -77,7 +95,7 @@ function timeline(q::Quiver; start = 0u"minute")
             for p in predecessors(q, n), (i, a) in enumerate(q[p => n])
                 p in sources && !_timed(a) || continue
                 b = max(ready[p], sready)
-                iv[(p, n)][i] = Interval(b, b + duration(a))
+                iv[(p, n)][i] = Interval(b, b + dur(a, p, n, i))
                 push!(lots, iv[(p, n)][i])
             end
             ins = isempty(streams) ? lots : streams
@@ -90,16 +108,16 @@ function timeline(q::Quiver; start = 0u"minute")
         if !(n in sources)
             if length(outs) == 1 && outs[1][3] isa AbstractTransformation
                 d, i, t = outs[1]
-                transformation = Interval(ready[n], ready[n] + duration(t))
+                transformation = Interval(ready[n], ready[n] + dur(t, n, d, i))
                 iv[(n, d)][i] = transformation
             else
                 first = [(d, i, a) for (d, i, a) in outs if !_rest(a) && !_timed(a)]
                 for (d, i, a) in first
-                    iv[(n, d)][i] = Interval(ready[n], ready[n] + duration(a))
+                    iv[(n, d)][i] = Interval(ready[n], ready[n] + dur(a, n, d, i))
                 end
                 b = maximum((iv[(n, d)][i].stop for (d, i, _) in first); init = ready[n])
                 for (d, i, a) in outs
-                    _rest(a) && !_timed(a) && (iv[(n, d)][i] = Interval(b, b + duration(a)))
+                    _rest(a) && !_timed(a) && (iv[(n, d)][i] = Interval(b, b + dur(a, n, d, i)))
                 end
             end
         end
@@ -116,7 +134,7 @@ function timeline(q::Quiver; start = 0u"minute")
                 b = transformation.start + total - duration_in(a.timing, total)
             end
             b = max(b, ready[p])
-            iv[(p, n)][i] = Interval(b, b + duration(a))
+            iv[(p, n)][i] = Interval(b, b + dur(a, p, n, i))
         end
     end
     # when the contents leave
