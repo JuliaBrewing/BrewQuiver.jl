@@ -47,6 +47,7 @@ include("brew.jl")
 include("provenance.jl")
 include("beerjson.jl")
 include("export.jl")
+include("timeline.jl")
 include("show.jl")
 
 # liquors
@@ -79,5 +80,8 @@ export recipe, recipes, write_beerjson
 
 # provenance
 export attribution, shares
+
+# timeline
+export duration, timeline, Timeline, Interval, makespan, overlaps, vesselchart
 
 end # module

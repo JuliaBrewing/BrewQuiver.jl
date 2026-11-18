@@ -85,6 +85,31 @@ shares of its lots: `recipe(res, q, product)`, `recipes(res, q)`, and
 `write_beerjson(path, res, q)` for a BeerJSON document. A recipe exported from a quiver and
 imported back (with the equipment of its kettle) brews to the same wort and beer.
 
+## Timeline
+
+Every arrow has a `duration`: the `time` of a transformation (the mash rest, the boil, the
+fermentation, the conditioning) and the `duration` of a transfer or a drain. `timeline(q)`
+places them as early as the quiver allows: a node is ready when all the streams reaching it
+have arrived, the lots without timing arrive then (the yeast is pitched when the wort is
+in), the timed additions arrive during the transformation that follows (a hop with 10
+minutes of boil left), and the transfers of the rest follow the drains (the grain bed is
+sparged after the first runnings). It gives when each node is filled, ready and emptied,
+grouped by vessel, `vesselchart(s)` draws it as a chart, and `overlaps(s)` flags a vessel
+booked for two contents at once.
+
+```julia
+s = timeline(q; start = 8u"hr")
+s[:kettle]             # (arrive = 540 min, ready = 575 min, leave = 635 min)
+vesselchart(s; to = 13u"hr")
+```
+
+```
+            8:00                                                   13:00
+  mashtun   ████████████▒▒▒▒▒▒▒
+  kettle                ▒▒▒▒▒▒▒█████████████████▒▒▒
+  fermentor                                     ▒▒▒█████████████████████
+```
+
 ## References
 
 The formulas are those of BrewingFormulas, whose `REFERENCES.md` lists their sources. The

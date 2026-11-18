@@ -31,19 +31,19 @@ add!(q, :bottling, :bottles; vessel = :bottles)
 # mash and batch sparge
 connect!(q, [:strike_water, :pale, :crystal] => :mash)
 connect!(q, :mash => :rested, MashRest(temperature = 67u"°C", time = 60u"minute"))
-connect!(q, :rested => :kettle, Drain(absorption = 1.0u"L/kg"))   # first runnings
+connect!(q, :rested => :kettle, Drain(absorption = 1.0u"L/kg", duration = 15u"minute"))   # first runnings
 connect!(q, :rested => :grain_bed)                                 # grain and absorbed wort
 connect!(q, :sparge_water => :grain_bed)
-connect!(q, :grain_bed => :kettle, Drain(absorption = 1.0u"L/kg")) # second runnings
+connect!(q, :grain_bed => :kettle, Drain(absorption = 1.0u"L/kg", duration = 20u"minute")) # second runnings
 
 # boil, with the hops arriving during it
 connect!(q, :goldings => :kettle, Transfer(30u"g"; remaining = 60u"minute"))
 connect!(q, :goldings => :kettle, Transfer(20u"g"; remaining = 10u"minute"))
 connect!(q, :kettle => :wort, Boil(time = 60u"minute", evaporation = 4u"L/hr"))
-connect!(q, :wort => :chilled, Chill(temperature = 20u"°C"))
+connect!(q, :wort => :chilled, Chill(temperature = 20u"°C", time = 25u"minute"))
 
 # knock-out, fermentation, bottling
-connect!(q, :chilled => :fermentor, Drain(retain = 1u"L"))           # trub and hops stay
+connect!(q, :chilled => :fermentor, Drain(retain = 1u"L", duration = 15u"minute"))   # trub and hops stay
 connect!(q, :yeast => :fermentor)
 connect!(q, :fermentor => :beer, Ferment(temperature = 20u"°C", time = 14u"d"))
 connect!(q, [:priming_sugar] => :bottling)
@@ -62,3 +62,10 @@ for (n, l) in leftovers(res)
 end
 println("Released: ", map(x -> round(u"kg", x; digits = 2), released(res)))
 println("Priming sugar for 2.4 vols: ", round(u"g", priming_mass(res[:beer => :bottling][1].moved, 2.4u"vols"); digits = 1))
+
+# the timeline of the brew, starting at 8:00: the stages of each vessel, and a chart of the
+# brew day
+println()
+tl = timeline(q; start = 8u"hr")
+display(tl); println("\n")
+vesselchart(tl; to = 13u"hr")

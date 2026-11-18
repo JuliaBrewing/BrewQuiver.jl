@@ -616,6 +616,78 @@ end
     @test doc.beerjson.recipes[2].author == "BrewQuiver"
 end
 
+@testset "Timeline" begin
+    minute, hr, d = u"minute", u"hr", u"d"
+    q = single_batch()
+    s = timeline(q)
+    @test s[:pale] == (arrive = 0.0minute, ready = 0.0minute, leave = 0.0minute)
+    @test s[:mash].ready == 0minute && s[:mash].leave == 60minute         # the mash rest
+    @test s[:rested].arrive == 60minute                                   # when the rest ends
+    @test s[:kettle].ready == 60minute && s[:wort].ready == 120minute     # the boil
+    @test [x.start for x in s[:goldings => :kettle]] == [60minute, 110minute]
+    @test only(s[:yeast => :fermentor]).start == 120minute               # pitched with the wort
+    @test s[:beer].ready == 120minute + 14d
+    @test only(s[:priming_sugar => :bottling]).start == s[:beer].ready
+    @test s[:bottles].ready == 120minute + 28d && s[:bottles].leave === nothing
+    @test makespan(s) == 120minute + 28d
+    @test isempty(overlaps(s))
+    @test timeline(q; start = 8hr)[:wort].ready == 10hr                  # a later start
+
+    # draining and chilling take time: the sparge waits for the first runnings
+    q[:rested => :kettle] = Drain(duration = 15minute)
+    q[:grain_bed => :kettle] = Drain(duration = 20minute)
+    q[:wort => :chilled] = Chill(temperature = 18u"°C", time = 25minute)
+    q[:chilled => :fermentor] = Drain(retain = 1u"L", duration = 20minute)
+    s = timeline(q)
+    @test only(s[:rested => :grain_bed]).start == 75minute
+    @test only(s[:sparge_water => :grain_bed]).start == 75minute
+    @test s[:kettle].arrive == 60minute && s[:kettle].ready == 95minute
+    @test [x.start for x in s[:goldings => :kettle]] == [95minute, 145minute]
+    @test s[:fermentor].arrive == 180minute && s[:fermentor].ready == 200minute
+    @test isempty(overlaps(s))
+    @test duration(Drain(duration = 15minute)) == 15minute && duration(Ferment()) == 14d
+
+    # dry hops during the fermentation: with 3 days left, or 2 days in
+    q = single_batch()
+    add!(q, :cascade, Hop("Cascade"; alpha = 6u"percent") => 60u"g")
+    connect!(q, :cascade => :fermentor, Transfer(30u"g"; remaining = 3d))
+    connect!(q, :cascade => :fermentor, Transfer(30u"g"; at = 2d))
+    s = timeline(q)
+    @test [x.start for x in s[:cascade => :fermentor]] == [120minute + 11d, 120minute + 2d]
+    @test s[:fermentor].ready == 120minute                     # timed additions do not wait
+
+    # the parti-gyle: each copper waits for the runnings of both mashes
+    q = fullers()
+    for m in 1:2, i in 1:3
+        q[Symbol(:bed, m, :_, i) => Symbol(:kettle, i)] = Drain(duration = (10 + 5m) * minute)
+    end
+    s = timeline(q)
+    @test s[:kettle1].ready == 60minute + 20minute            # the slower drain of mash 2
+    @test s[:kettle2].ready == 80minute + 20minute
+    @test s[:wort1].ready == s[:kettle1].ready + 90minute
+    @test s[:esb].ready == max(s[:bright1].ready, s[:bright2].ready)
+    @test isempty(overlaps(s))
+
+    # one kettle for two boils not joined by arrows: they overlap
+    q = Quiver()
+    add!(q, :w1, wort(20u"L", 1.050u"sg")); add!(q, :w2, wort(20u"L", 1.050u"sg"))
+    add!(q, :k1, :b1; vessel = :kettle); add!(q, :k2, :b2; vessel = :kettle)
+    connect!(q, :w1 => :k1); connect!(q, :w2 => :k2)
+    connect!(q, :k1 => :b1, Boil()); connect!(q, :k2 => :b2, Boil())
+    s = timeline(q)
+    @test (:kettle, :k1, :k2) in overlaps(s)
+    @test occursin("overlapping in a vessel", sprint(show, MIME"text/plain"(), s))
+
+    # the display and the chart
+    s = timeline(single_batch())
+    shown = sprint(show, MIME"text/plain"(), s)
+    @test occursin("Timeline over 28d 2:00", shown) && occursin("[kettle]", shown)
+    chart = sprint(io -> vesselchart(io, s; to = 3hr, width = 36))
+    @test occursin("mashtun", chart) && occursin('█', chart)
+    @test count('\n', chart) == 5
+    @test_throws ArgumentError vesselchart(devnull, s; from = 2hr, to = 1hr)
+end
+
 include("beerjson.jl")
 
 end
