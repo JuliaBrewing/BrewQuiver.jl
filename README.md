@@ -122,6 +122,35 @@ equip!(q, :kettle, Vessel(name = "Kettle", capacity = 36u"L", evaporation = 4u"L
                           dead_space = 1u"L", drain_rate = 1.5u"L/minute"))
 ```
 
+## Targets and solving
+
+`solve!(q, targets...; vary)` changes parameters of a quiver so that its brew meets
+targets, by Newton's method on its brews. A target is `node => f => goal`, for any function
+`f` of the contents of the node (`gravity`, `volume`, `ibu`, `srm`, `abv`, `carbonation`,
+...), with the goal in any of its units (a gravity in °P is converted with the gravity
+model). What varies is the amount of lots, `Amount(:pale, :crystal)` scaling them together
+(with the transfers of masses and volumes leaving them), or a numeric field of an arrow,
+`Setting(:kettle => :wort, :stand)`; there are as many as targets.
+
+```julia
+sol = solve!(q, :fermentor => gravity => 1.052u"sg", :wort => ibu => 35u"IBU",
+             :kettle => volume => 28u"L", :bottles => carbonation => 2.4u"vols";
+             vary = [Amount(:pale, :crystal), Amount(:goldings), Amount(:sparge_water),
+                     Amount(:priming_sugar)])
+```
+
+```
+Solution in 3 iterations
+  amount of :pale, :crystal: :crystal Contents(302.0 g Crystal 60), :pale Contents(4.531 kg Pale ale malt)
+  amount of :goldings: Contents(87.5 g East Kent Goldings)
+  amount of :sparge_water: Contents(14.98 L, 1.0 sg, 80.0 °C)
+  amount of :priming_sugar: Contents(151.0 g Corn sugar)
+  ...
+```
+
+The blend fractions of a parti-gyle are solved the same way, e.g. for the gravities of two
+of its beers, with `Setting(:bright1 => :barley_wine, :amount)`.
+
 ## Timeline
 
 Every arrow has a `duration`: the `time` of a transformation (the mash rest, the boil, the

@@ -29,7 +29,7 @@ res = brew(q)
 module BrewQuiver
 
 using Unitful
-using Unitful: @u_str
+using Unitful: @u_str, dimension, unit
 using UnitfulBrewing
 using BrewingFormulas
 using BrewingFormulas: ABVModel, ColorModel, AbstractPrimingSugar, co2_yield, Tinseth, Rager
@@ -49,6 +49,7 @@ include("provenance.jl")
 include("beerjson.jl")
 include("export.jl")
 include("timeline.jl")
+include("solve.jl")
 include("show.jl")
 
 # liquors
@@ -85,5 +86,8 @@ export attribution, shares
 
 # timeline
 export duration, timeline, Timeline, Interval, makespan, overlaps, vesselchart
+
+# targets and solving
+export AbstractParameter, Amount, Setting, Target, Solution, solve!
 
 end # module
