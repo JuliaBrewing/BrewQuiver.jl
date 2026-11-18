@@ -34,6 +34,7 @@ using UnitfulBrewing
 using BrewingFormulas
 using BrewingFormulas: ABVModel, ColorModel, AbstractPrimingSugar, co2_yield
 using Graphs: Graphs, DiGraph, has_path, rem_edge!, rem_vertex!
+import BeerJSON
 using MetaGraphsNext: MetaGraph, code_for, label_for, edge_labels, inneighbor_labels,
     outneighbor_labels
 
@@ -43,6 +44,7 @@ include("contents.jl")
 include("arrows.jl")
 include("quiver.jl")
 include("brew.jl")
+include("beerjson.jl")
 include("show.jl")
 
 # liquors
@@ -68,5 +70,8 @@ export predecessors, successors, descendants
 # brewing
 export brew, rebrew!, BrewResult, NodeResult, ArrowResult, leftover, leftovers, released
 export products
+
+# BeerJSON
+export AbstractCalibration, NoCalibration, BrewhouseEfficiency, brewhouse_efficiency
 
 end # module

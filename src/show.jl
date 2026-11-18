@@ -35,7 +35,7 @@ end
 
 # solids
 
-_mass(m) = m < 1u"kg" ? string(_r(uconvert(u"g", m), 1), " g") : string(_r(m, 3), " kg")
+_mass(m) = ustrip(u"kg", m) < 0.9995 ? string(_r(uconvert(u"g", m), 1), " g") : string(_r(m, 3), " kg")
 _timing(::Nothing) = ""
 _timing(t::Remaining) = string(" (", _r(t.time, 1), " min remaining)")
 _timing(t::At) = string(" (at ", _r(t.time, 1), " min)")
@@ -106,7 +106,7 @@ function Base.show(io::IO, d::Drain)
     parts = String[]
     d.absorption == Drain().absorption ||
         push!(parts, string(_r(d.absorption, 2), " L/kg absorbed"))
-    iszero(d.retain) || push!(parts, string(_r(d.retain, 2), " L retained"))
+    iszero(_r(d.retain, 2)) || push!(parts, string(_r(d.retain, 2), " L retained"))
     print(io, join(parts, ", "), ")")
 end
 Base.show(io::IO, m::MashRest) =

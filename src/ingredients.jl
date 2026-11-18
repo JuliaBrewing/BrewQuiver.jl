@@ -45,7 +45,7 @@ soluble(f::Fermentable) = f.kind !== :grain
     Hop(name; alpha, form = :pellet)
 
 A hop with alpha acid content `alpha` (a percentage or fraction) and `form` (`:pellet`,
-`:leaf`, `:plug`, `:powder`, `:extract`).
+`:leaf`, `:wet_leaf`, `:plug`, `:powder`, `:extract`).
 """
 struct Hop <: AbstractIngredient
     name::String
@@ -65,7 +65,8 @@ The Python BrewQuiver divided Tinseth's utilization by 0.9 and used the factors 
 pellets and 0.9 for leaf hops, i.e. pellets about 11% above leaf hops.
 """
 const HOP_FORM_FACTORS = Dict{Symbol, Float64}(
-    :leaf => 1.0, :plug => 1.0, :pellet => 1.1, :powder => 1.1, :extract => 1.1)
+    :leaf => 1.0, :wet_leaf => 1.0, :plug => 1.0, :pellet => 1.1, :powder => 1.1,
+    :extract => 1.1)
 
 hop_form_factor(h::Hop) = get(HOP_FORM_FACTORS, h.form, 1.0)
 
