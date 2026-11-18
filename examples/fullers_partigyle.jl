@@ -1,7 +1,8 @@
 # Figure 1 of the BrewQuiver notes: the joint production of Fuller's Barley Wine, ESB,
 # Pale Ale and Bitter by parti-gyle. Two mashes are drained three times each, and the i-th
 # runnings of both go to the i-th copper; the three fermented beers are racked and blended
-# into four.
+# into four, aiming at the published strengths of Golden Pride (OG about 1.088), ESB (1.059),
+# London Pride (1.047) and Chiswick Bitter (1.035).
 #
 # Run with `julia --project=. examples/fullers_partigyle.jl` from the package folder.
 # (The amounts are illustrative, not Fuller's actual recipes.)
@@ -13,7 +14,7 @@ crystal  = Fermentable("Crystal 60"; yield = 74u"percent", color = 60u"°L")
 invert   = Fermentable("Invert sugar"; kind = :sugar, yield = 100u"percent", color = 1u"SRM",
                        moisture = 0)
 goldings = Hop("East Kent Goldings"; alpha = 5u"percent")
-ale      = Culture("English ale"; attenuation = 75u"percent")
+ale      = Culture("English ale"; attenuation = 72u"percent")
 
 q = Quiver()
 add!(q, :goldings, goldings => 1.5u"kg")
@@ -22,7 +23,7 @@ add!(q, :invert, invert => 4u"kg")
 # three coppers, three fermenting vessels and three racking tanks
 for i in 1:3
     add!(q, Symbol(:yeast, i), ale => 1)
-    add!(q, Symbol(:kettle, i), Symbol(:wort, i); vessel = Symbol(:copper, i))
+    add!(q, Symbol(:kettle, i), Symbol(:wort, i), Symbol(:chilled, i); vessel = Symbol(:copper, i))
     add!(q, Symbol(:fermentor, i), Symbol(:beer, i); vessel = Symbol(:fv, i))
     add!(q, Symbol(:bright, i); vessel = Symbol(:tank, i))
 end
@@ -38,7 +39,7 @@ for (m, grist) in enumerate(([pale => 70u"kg", crystal => 4u"kg"],
     add!(q, mash, beds...; vessel = Symbol(:mashtun, m))
     connect!(q, [Symbol(:strike, m); lots] => mash)
     connect!(q, mash => beds[1], MashRest(temperature = 66u"°C", time = 60u"minute"))
-    for (i, v) in enumerate((nothing, 70u"L", 60u"L"))
+    for (i, v) in enumerate((nothing, 60u"L", 40u"L"))
         if v !== nothing                                    # sparge the grain bed
             add!(q, Symbol(:sparge, m, :_, i), water(v; temperature = 80u"°C"))
             connect!(q, beds[i - 1] => beds[i])              # the grain and what it holds
@@ -49,13 +50,14 @@ for (m, grist) in enumerate(([pale => 70u"kg", crystal => 4u"kg"],
 end
 
 # boils of decreasing gravity, fermentations, racking
-for i in 1:3
-    kettle, wort, fv, beer, bright =
-        (Symbol(x, i) for x in (:kettle, :wort, :fermentor, :beer, :bright))
-    connect!(q, :goldings => kettle, Transfer((750 - 250(i - 1)) * u"g"; remaining = 90u"minute"))
+for (i, hops) in enumerate((1100u"g", 270u"g", 130u"g"))
+    kettle, wort, chilled, fv, beer, bright =
+        (Symbol(x, i) for x in (:kettle, :wort, :chilled, :fermentor, :beer, :bright))
+    connect!(q, :goldings => kettle, Transfer(hops; remaining = 90u"minute"))
     i == 1 && connect!(q, :invert => kettle)
     connect!(q, kettle => wort, Boil(time = 90u"minute", evaporation = 8u"L/hr"))
-    connect!(q, wort => fv, Drain(retain = 2u"L"))
+    connect!(q, wort => chilled, Chill(temperature = 18u"°C"))
+    connect!(q, chilled => fv, Drain(retain = 2u"L"))
     connect!(q, Symbol(:yeast, i) => fv)
     connect!(q, fv => beer, Ferment(temperature = 19u"°C", time = 7u"d"))
     connect!(q, beer => bright, Drain(retain = 2u"L"))
@@ -63,11 +65,11 @@ end
 
 # blending: four beers from three, merged at the nodes
 add!(q, :barley_wine, :esb, :pale_ale, :bitter)
-connect!(q, :bright1 => :barley_wine, Transfer(75u"percent"))
-connect!(q, :bright1 => :esb)                               # the rest
-connect!(q, :bright2 => :esb, Transfer(70u"percent"))
+connect!(q, :bright1 => :esb, Transfer(6u"percent"))
+connect!(q, :bright1 => :barley_wine)                       # the rest
+connect!(q, :bright2 => :esb, Transfer(60u"percent"))
 connect!(q, :bright2 => :pale_ale)
-connect!(q, :bright3 => :pale_ale, Transfer(50u"percent"))
+connect!(q, :bright3 => :pale_ale, Transfer(16u"percent"))
 connect!(q, :bright3 => :bitter)
 
 res = brew(q)

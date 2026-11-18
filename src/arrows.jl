@@ -2,7 +2,7 @@
 #
 # - a `Transfer` moves a uniform part of the contents (or the rest);
 # - a `Drain` moves the liquid only, leaving behind the solids and what they retain;
-# - a transformation (`MashRest`, `Boil`, `Ferment`, `Prime`, `Carbonate`) turns all the
+# - a transformation (`MashRest`, `Boil`, `Chill`, `Ferment`, `Prime`, `Carbonate`) turns all the
 #   contents of a node into the next state of the same vessel. A new transformation `T`
 #   implements `transform(t::T, contents, models) -> (contents, released)`.
 
@@ -18,8 +18,8 @@ abstract type AbstractArrow end
     AbstractTransformation <: AbstractArrow
 
 Supertype of the arrows that turn all the contents of a node into the next state of the
-same vessel: [`MashRest`](@ref), [`Boil`](@ref), [`Ferment`](@ref), [`Prime`](@ref),
-[`Carbonate`](@ref). A transformation must be the only arrow leaving its node. A new one
+same vessel: [`MashRest`](@ref), [`Boil`](@ref), [`Chill`](@ref), [`Ferment`](@ref),
+[`Prime`](@ref), [`Carbonate`](@ref). A transformation must be the only arrow leaving its node. A new one
 implements [`transform`](@ref).
 """
 abstract type AbstractTransformation <: AbstractArrow end
@@ -32,8 +32,9 @@ NamedTuple `(water, co2)` of masses (negative for what it took in).
 """
 function transform end
 
-const Released = @NamedTuple{water::KgQ, co2::GQ}
-released_nothing() = (water = 0.0u"kg", co2 = 0.0u"g")
+const Released = @NamedTuple{water::KgQ, co2::KgQ}
+_released(water, co2) = (water = uconvert(u"kg", water), co2 = uconvert(u"kg", co2))
+released_nothing() = _released(0.0u"kg", 0.0u"kg")
 
 """
     Transfer(amount = nothing; remaining = nothing, at = nothing)
@@ -198,8 +199,22 @@ function transform(b::Boil, c::Contents, models)
         end
     end
     after += Liquor(; isoalpha, temperature = 100u"°C")
-    return Contents(after, rest), (water = evaporated, co2 = before.co2)
+    return Contents(after, rest), _released(evaporated, before.co2)
 end
+
+"""
+    Chill(; temperature = 20u"°C", time = 0u"minute")
+
+Brings the contents of a node to `temperature`, e.g. the wort after the boil, before it is
+transferred to the fermentor. Nothing else changes (the volumes of the quiver are at 20 °C).
+"""
+struct Chill <: AbstractTransformation
+    temperature::CQ
+    time::MinQ
+end
+Chill(; temperature = 20u"°C", time = 0u"minute") = Chill(_temperature(temperature), _minutes(time))
+
+transform(k::Chill, c::Contents, models) = with_temperature(c, k.temperature), released_nothing()
 
 """
     Ferment(; temperature = 20u"°C", time = 14u"d", attenuation = nothing)
@@ -253,7 +268,7 @@ function transform(f::Ferment, c::Contents, models)
                        fermented.color, co2, f.temperature)
     rest = AbstractSolid[s isa Portion{Culture} ? YeastCake(solid_mass(s)) : s for s in c.solids]
     push!(rest, YeastCake(grown))
-    return Contents(fermented, rest), (water = 0.0u"kg", co2 = l.co2 + produced - co2)
+    return Contents(fermented, rest), _released(0.0u"kg", l.co2 + produced - co2)
 end
 
 """
@@ -324,5 +339,5 @@ function transform(k::Carbonate, c::Contents, models)
                             volume(l; eq = models.gravity))
     added = max(0.0u"g", target - l.co2)
     l = Liquor(l.water, l.extract, l.alcohol, l.isoalpha, l.color, l.co2 + added, l.temperature)
-    return Contents(l, c.solids), (water = 0.0u"kg", co2 = -added)
+    return Contents(l, c.solids), _released(0.0u"kg", -added)
 end

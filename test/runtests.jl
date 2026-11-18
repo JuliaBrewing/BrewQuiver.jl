@@ -124,7 +124,7 @@ end
                                  ustrip(u"lb", 1u"kg") * ustrip(u"°L", invert.color)
     @test grist(rested) ≈ 4u"kg"
     @test total_mass(rested) ≈ total_mass(mash)
-    @test rel == (water = 0u"kg", co2 = 0u"g")
+    @test rel == (water = 0u"kg", co2 = 0u"kg")
     @test liquor(rested).temperature == 67u"°C"
 
     # draining leaves the grain and what it absorbs, and what the vessel retains
@@ -148,11 +148,18 @@ end
     @test liquor(b1).isoalpha > liquor(b2).isoalpha > 0u"mg"
     @test total_mass(b3) + r1.water ≈ total_mass(w + early + late)
 
+    # chilling changes the temperature only
+    hot = Contents(wort(20u"L", 1.050u"sg"; temperature = 100u"°C"), [Portion(goldings, 10u"g")])
+    cold, rc = transform(Chill(temperature = 18u"°C"), hot, models)
+    @test liquor(cold).temperature ≈ 18u"°C"
+    @test cold ≈ with_temperature(hot, 18u"°C")
+    @test rc == (water = 0u"kg", co2 = 0u"kg")
+
     # a fermentation needs a culture or an attenuation
     @test_throws ArgumentError transform(Ferment(), w, models)
     f, rf = transform(Ferment(attenuation = 80u"percent"), w, models)
     @test apparent_attenuation(f) ≈ 80u"percent"
-    @test total_mass(f) + uconvert(u"kg", rf.co2) ≈ total_mass(w)
+    @test total_mass(f) + rf.co2 ≈ total_mass(w)
     @test only(solids(f)) isa YeastCake
 
     # priming and forced carbonation
@@ -164,7 +171,7 @@ end
     @test s ≈ priming_sugar(CornSugar(), volume(beer), 2.5u"vols", 20u"°C") rtol = 2e-2
     forced, rk = transform(Carbonate(2.5u"vols"), beer, models)
     @test carbonation(forced) ≈ 2.5u"vols"
-    @test total_mass(forced) ≈ total_mass(beer) - uconvert(u"kg", rk.co2)
+    @test total_mass(forced) ≈ total_mass(beer) - rk.co2
 end
 
 function single_batch(; priming = 110u"g")
@@ -177,7 +184,7 @@ function single_batch(; priming = 110u"g")
     add!(q, :sparge_water, water(14u"L"; temperature = 80u"°C"))
     add!(q, :priming_sugar, dextrose => priming)
     add!(q, :mash, :rested, :grain_bed; vessel = :mashtun)
-    add!(q, :kettle, :wort; vessel = :kettle)
+    add!(q, :kettle, :wort, :chilled; vessel = :kettle)
     add!(q, :fermentor, :beer; vessel = :fermentor)
     add!(q, :bottling, :bottles; vessel = :bottles)
     connect!(q, [:strike_water, :pale, :crystal] => :mash)
@@ -189,7 +196,8 @@ function single_batch(; priming = 110u"g")
     connect!(q, :goldings => :kettle, Transfer(30u"g"; remaining = 60u"minute"))
     connect!(q, :goldings => :kettle, Transfer(20u"g"; remaining = 10u"minute"))
     connect!(q, :kettle => :wort, Boil(time = 60u"minute", evaporation = 4u"L/hr"))
-    connect!(q, :wort => :fermentor, Drain(retain = 1u"L"))
+    connect!(q, :wort => :chilled, Chill(temperature = 18u"°C"))
+    connect!(q, :chilled => :fermentor, Drain(retain = 1u"L"))
     connect!(q, :yeast => :fermentor)
     connect!(q, :fermentor => :beer, Ferment(temperature = 20u"°C"))
     connect!(q, :priming_sugar => :bottling)
@@ -204,14 +212,14 @@ function conserved(res, q)
     initial = [q[n].initial for n in nodes(q)]
     left = collect(values(leftovers(res)))
     r = released(res)
-    return sum(total_mass, initial) ≈ sum(total_mass, left) + r.water + uconvert(u"kg", r.co2)
+    return sum(total_mass, initial) ≈ sum(total_mass, left) + r.water + r.co2
 end
 
 @testset "Single batch" begin
     q = single_batch()
     @test nodes(q) == [:pale, :crystal, :goldings, :yeast, :strike_water, :sparge_water,
-                       :priming_sugar, :mash, :rested, :grain_bed, :kettle, :wort, :fermentor,
-                       :beer, :bottling, :bottles]
+                       :priming_sugar, :mash, :rested, :grain_bed, :kettle, :wort, :chilled,
+                       :fermentor, :beer, :bottling, :bottles]
     @test vessels(q)[:mashtun] == [:mash, :rested, :grain_bed]
     res = brew(q)
 
@@ -230,8 +238,11 @@ end
     @test only(res[:kettle => :wort]).released.water ≈ 4u"L" * BrewingFormulas.WATER_DENSITY_20C
     @test 1.045u"sg" < gravity(res[:wort]) < 1.060u"sg"
     @test 15u"IBU" < ibu(res[:wort]) < 30u"IBU"
-    @test only(solids(leftover(res, :wort))) isa HopMatter
-    @test volume(leftover(res, :wort)) ≈ 1u"L"
+    @test only(solids(leftover(res, :chilled))) isa HopMatter
+    @test volume(leftover(res, :chilled)) ≈ 1u"L"
+    @test liquor(res[:wort]).temperature ≈ 100u"°C"
+    @test liquor(res[:fermentor]).temperature ≈ 18u"°C"                 # chilled
+    @test res[:chilled] ≈ with_temperature(res[:wort], 18u"°C")
 
     # fermentation: the attenuation of the culture, with Balling's relations
     wort_in = res[:fermentor]
@@ -263,6 +274,20 @@ end
 
     # other models
     @test ibu(brew(q; models = (bitterness = Rager(),))[:wort]) != ibu(res[:wort])
+
+    # the display groups the nodes: the lots, then the stages of each vessel
+    shown = sprint(show, MIME"text/plain"(), q)
+    @test occursin("Quiver with 17 nodes and 18 arrows", shown)
+    @test occursin("Transfer(all) → :mash", shown)                      # the only arrow
+    @test occursin("Transfer(rest) → :grain_bed", shown)                # beside a drain
+    @test occursin("Transfer(30.0 g, 60.0 min remaining) → :kettle", shown)
+    @test occursin("Chill(18.0 °C) → :chilled", shown)
+    heads = ["\n  lots\n", "\n  [mashtun]\n", "\n  [kettle]\n", "\n  [fermentor]\n", "\n  [bottles]\n"]
+    at = [first(findfirst(h, shown)) for h in heads]
+    @test issorted(at)
+    shown = sprint(show, MIME"text/plain"(), res)
+    @test all(h -> occursin(h, shown), heads)
+    @test occursin("left: 4.8 L", shown)
 end
 
 @testset "Quiver construction" begin
@@ -281,7 +306,7 @@ end
           successors(q, :rested) == [:grain_bed, :kettle]
     @test Set(predecessors(q, :kettle)) == Set([:rested, :grain_bed, :goldings])
     @test descendants(q, :beer) == [:beer, :bottling, :bottles]
-    @test length(arrows(q)) == 17
+    @test length(arrows(q)) == 18
     @test length(q[:goldings => :kettle]) == 2
     @test vessel(q, :wort) == :kettle && vessel(q, :pale) === nothing
 

@@ -87,8 +87,20 @@ function _amount_string(a)
     return _mass(a)
 end
 
+# (inside an arrow, the timing reads as a further argument)
+_timing_arg(::Nothing) = ""
+_timing_arg(t::Remaining) = string(", ", _r(t.time, 1), " min remaining")
+_timing_arg(t::At) = string(", at ", _r(t.time, 1), " min")
+
 Base.show(io::IO, t::Transfer) =
-    print(io, "Transfer(", _amount_string(t.amount), _timing(t.timing), ")")
+    print(io, "Transfer(", _amount_string(t.amount), _timing_arg(t.timing), ")")
+
+# an arrow in the listing of a quiver: a transfer of the rest that is the only arrow leaving
+# its node takes all of it
+_arrow_string(a, alone) = sprint(show, a)
+_arrow_string(t::Transfer, alone) = alone && t.amount === nothing ?
+    string("Transfer(all", _timing_arg(t.timing), ")") : sprint(show, t)
+
 function Base.show(io::IO, d::Drain)
     print(io, "Drain(")
     parts = String[]
@@ -102,6 +114,8 @@ Base.show(io::IO, m::MashRest) =
 _rate_string(r::typeof(1.0u"L/hr")) = string(_r(r, 2), " L/h")
 _rate_string(r::typeof(1.0u"hr^-1")) = string(_r(100r, 1), "%/h")
 Base.show(io::IO, b::Boil) = print(io, "Boil(", _r(b.time), " min, ", _rate_string(b.evaporation), ")")
+Base.show(io::IO, k::Chill) = print(io, "Chill(", _r(k.temperature), " °C",
+    iszero(k.time) ? "" : string(", ", _r(k.time), " min"), ")")
 Base.show(io::IO, f::Ferment) = print(io, "Ferment(", _r(f.temperature), " °C, ", _r(f.time), " d",
     f.attenuation === nothing ? "" : string(", ", _r(100f.attenuation), "%"), ")")
 Base.show(io::IO, p::Prime) = print(io, "Prime(", nameof(typeof(p.sugar)), ")")
@@ -109,33 +123,62 @@ Base.show(io::IO, k::Carbonate) = print(io, "Carbonate(", _r(k.carbonation, 2), 
 
 # quivers and results
 
+# The nodes in groups, for display: the lots (sources outside any vessel), then the stages of
+# each vessel, then the other nodes (blends, ...), each group in topological order.
+function _groups(order, vesselof, issource)
+    vs = Symbol[]
+    members = Dict{Symbol, Vector{Symbol}}()
+    lots, others = Symbol[], Symbol[]
+    for n in order
+        v = vesselof(n)
+        if v !== nothing
+            haskey(members, v) || (push!(vs, v); members[v] = Symbol[])
+            push!(members[v], n)
+        else
+            push!(issource(n) ? lots : others, n)
+        end
+    end
+    groups = Pair{String, Vector{Symbol}}[]
+    isempty(lots) || push!(groups, "lots" => lots)
+    for v in vs
+        push!(groups, string("[", v, "]") => members[v])
+    end
+    isempty(others) || push!(groups, "other nodes" => others)
+    return groups
+end
+
 function Base.show(io::IO, ::MIME"text/plain", q::Quiver)
     ns = nodes(q)
     as = arrows(q)
-    println(io, "Quiver with ", length(ns), " nodes and ", length(as), " arrows:")
-    for n in ns
-        node = q[n]
-        print(io, "  :", n)
-        node.vessel === nothing || print(io, " [", node.vessel, "]")
-        iszero(node.initial) || (print(io, " "); _summary(io, node.initial))
-        for (s, d, a) in as
-            s == n && print(io, "\n      ", a, " → :", d)
+    print(io, "Quiver with ", length(ns), " nodes and ", length(as), " arrows")
+    for (title, members) in _groups(ns, n -> vessel(q, n), n -> isempty(predecessors(q, n)))
+        print(io, "\n  ", title)
+        for n in members
+            print(io, "\n    :", n)
+            node = q[n]
+            iszero(node.initial) || (print(io, "  "); _summary(io, node.initial))
+            outs = [(d, a) for (s, d, a) in as if s == n]
+            for (d, a) in outs
+                print(io, "\n        ", _arrow_string(a, length(outs) == 1), " → :", d)
+            end
         end
-        n === last(ns) || println(io)
     end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", r::BrewResult)
     eq, color = r.models.gravity, r.models.color
-    println(io, "BrewResult:")
-    for n in r.order
-        nr = r.nodes[n]
-        print(io, "  :", n, "  ")
-        _summary(io, nr.contents; eq, color)
-        if !iszero(nr.leftover) && any(k -> k[1] === n, keys(r.arrows))
-            print(io, "\n      left: ")
-            _summary(io, nr.leftover; eq, color)
+    print(io, "BrewResult")
+    issource(n) = !any(k -> k[2] === n, keys(r.arrows))
+    for (title, members) in _groups(r.order, n -> get(r.vessels, n, nothing), issource)
+        print(io, "\n  ", title)
+        for n in members
+            nr = r.nodes[n]
+            print(io, "\n    :", n, "  ")
+            _summary(io, nr.contents; eq, color)
+            if !iszero(nr.leftover) && any(k -> k[1] === n, keys(r.arrows))
+                print(io, "\n        left: ")
+                _summary(io, nr.leftover; eq, color)
+            end
         end
-        n === last(r.order) || println(io)
     end
 end
