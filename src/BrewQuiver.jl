@@ -59,7 +59,7 @@ export AbstractTiming, Remaining, At
 
 # arrows
 export AbstractArrow, AbstractTransformation, transform
-export Transfer, Drain, MashRest, Boil, Ferment, Prime, Carbonate, priming_mass
+export Transfer, Drain, MashRest, Boil, Chill, Ferment, Prime, Carbonate, priming_mass
 
 # quiver
 export Quiver, Node, add!, connect!, disconnect!, remove!, nodes, arrows, vessel, vessels

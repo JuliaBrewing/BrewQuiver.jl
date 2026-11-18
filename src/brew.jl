@@ -36,6 +36,7 @@ struct BrewResult{M <: NamedTuple}
     nodes::Dict{Symbol, NodeResult}
     arrows::Dict{Tuple{Symbol, Symbol}, Vector{ArrowResult}}
     order::Vector{Symbol}
+    vessels::Dict{Symbol, Union{Nothing, Symbol}}
     models::M
 end
 
@@ -66,7 +67,7 @@ The total released from the quiver by its arrows, as a NamedTuple `(water, co2)`
 the water evaporated and the CO₂ escaped (net of the CO₂ taken in by forced carbonation).
 """
 function released(r::BrewResult)
-    w, c = 0.0u"kg", 0.0u"g"
+    w, c = 0.0u"kg", 0.0u"kg"
     for v in values(r.arrows), a in v
         w += a.released.water
         c += a.released.co2
@@ -93,7 +94,8 @@ function brew(q::Quiver; models::NamedTuple = (;))
     ms = merge(DEFAULT_MODELS, models)
     order = nodes(q)
     res = BrewResult(Dict{Symbol, NodeResult}(), Dict{Tuple{Symbol, Symbol}, Vector{ArrowResult}}(),
-                     order, ms)
+                     order, Dict{Symbol, Union{Nothing, Symbol}}(n => vessel(q, n) for n in order),
+                     ms)
     for label in order
         _brew_node!(res, q, label)
     end
@@ -139,6 +141,10 @@ function rebrew!(res::BrewResult, q::Quiver, label::Symbol)
     end
     resize!(res.order, length(order))
     copyto!(res.order, order)
+    empty!(res.vessels)
+    for n in order
+        res.vessels[n] = vessel(q, n)
+    end
     stale = union((Set(descendants(q, n)) for n in changed)...)
     for n in order
         n in stale && _brew_node!(res, q, n)

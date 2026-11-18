@@ -37,7 +37,7 @@ Pkg.add(url = "https://github.com/JuliaBrewing/BrewQuiver.jl")
     or `at = 50u"minute"`, relative to the transformation that follows);
   - `Drain` moves the liquid only, leaving the solids, what the grain absorbs and what the
     vessel retains;
-  - transformations (`MashRest`, `Boil`, `Ferment`, `Prime`, `Carbonate`) turn all the
+  - transformations (`MashRest`, `Boil`, `Chill`, `Ferment`, `Prime`, `Carbonate`) turn all the
     contents of a node into the next stage of the vessel. They act on what is in the node:
     the grain that was mashed in, the hops in the kettle, each for its own time, the culture
     that was pitched, the priming sugar in the bottling bucket.
@@ -80,7 +80,7 @@ add!(q, :priming_sugar, dextrose => 130u"g")
 
 # the stages of each vessel
 add!(q, :mash, :rested, :grain_bed; vessel = :mashtun)
-add!(q, :kettle, :wort; vessel = :kettle)
+add!(q, :kettle, :wort, :chilled; vessel = :kettle)
 add!(q, :fermentor, :beer; vessel = :fermentor)
 add!(q, :bottling, :bottles; vessel = :bottles)
 
@@ -96,7 +96,8 @@ connect!(q, :grain_bed => :kettle, Drain(absorption = 1.0u"L/kg")) # second runn
 connect!(q, :cascade => :kettle, Transfer(25u"g"; remaining = 60u"minute"))
 connect!(q, :cascade => :kettle, Transfer(25u"g"; remaining = 10u"minute"))
 connect!(q, :kettle => :wort, Boil(time = 60u"minute", evaporation = 4u"L/hr"))
-connect!(q, :wort => :fermentor, Drain(retain = 1u"L"))           # trub and hops stay
+connect!(q, :wort => :chilled, Chill(temperature = 19u"°C"))
+connect!(q, :chilled => :fermentor, Drain(retain = 1u"L"))        # trub and hops stay
 connect!(q, :yeast => :fermentor)
 connect!(q, :fermentor => :beer, Ferment(temperature = 19u"°C", time = 14u"d"))
 connect!(q, :priming_sugar => :bottling)

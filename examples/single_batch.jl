@@ -24,7 +24,7 @@ add!(q, :priming_sugar, dextrose => 110u"g")
 
 # the successive stages in each vessel
 add!(q, :mash, :rested, :grain_bed; vessel = :mashtun)
-add!(q, :kettle, :wort; vessel = :kettle)
+add!(q, :kettle, :wort, :chilled; vessel = :kettle)
 add!(q, :fermentor, :beer; vessel = :fermentor)
 add!(q, :bottling, :bottles; vessel = :bottles)
 
@@ -40,9 +40,10 @@ connect!(q, :grain_bed => :kettle, Drain(absorption = 1.0u"L/kg")) # second runn
 connect!(q, :goldings => :kettle, Transfer(30u"g"; remaining = 60u"minute"))
 connect!(q, :goldings => :kettle, Transfer(20u"g"; remaining = 10u"minute"))
 connect!(q, :kettle => :wort, Boil(time = 60u"minute", evaporation = 4u"L/hr"))
+connect!(q, :wort => :chilled, Chill(temperature = 20u"°C"))
 
 # knock-out, fermentation, bottling
-connect!(q, :wort => :fermentor, Drain(retain = 1u"L"))
+connect!(q, :chilled => :fermentor, Drain(retain = 1u"L"))           # trub and hops stay
 connect!(q, :yeast => :fermentor)
 connect!(q, :fermentor => :beer, Ferment(temperature = 20u"°C", time = 14u"d"))
 connect!(q, [:priming_sugar] => :bottling)
@@ -55,9 +56,9 @@ display(res); println("\n")
 
 println("The bottles:")
 display(res[:bottles]); println("\n")
-println("Left in the vessels: ")
+println("Left in the vessels:")
 for (n, l) in leftovers(res)
     n === :bottles || println("  :", rpad(n, 12), l)
 end
-println("Released: ", released(res))
+println("Released: ", map(x -> round(u"kg", x; digits = 2), released(res)))
 println("Priming sugar for 2.4 vols: ", round(u"g", priming_mass(res[:beer => :bottling][1].moved, 2.4u"vols"); digits = 1))
