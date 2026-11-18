@@ -207,13 +207,13 @@ function _record(c::Culture, s)
 end
 
 """
-    write_beerjson(path, lib::Library)
+    writejson(path, lib::Library)
 
 Writes the ingredients of `lib` to a BeerJSON document at `path`, as fermentables, hop
 varieties and cultures, with their stock as inventory (counts of cultures are not written:
 BeerJSON's inventory of cultures holds volumes and masses).
 """
-function write_beerjson(path::AbstractString, lib::Library)
+function BJ.writejson(path::AbstractString, lib::Library)
     records(T) = [_record(lib[n], lib.stock[n]) for n in keys(lib) if lib[n] isa T]
     content = Dict{Symbol, Any}(:version => 1.0)
     for (key, T) in ((:fermentables, Fermentable), (:hop_varieties, Hop), (:cultures, Culture))

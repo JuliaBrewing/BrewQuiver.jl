@@ -102,3 +102,10 @@ res = brew(q)
 println("\nMash water: ", profile(res[:mash]), ", residual alkalinity ",
         round(u"mg/L", residual_alkalinity(res[:mash]); digits = 1), " as CaCO₃")
 println("Estimated mash pH: ", round(mash_ph(res[:mash]); digits = 2))
+
+# Saved as a JSON Graph Format document (with the values of the brew, for other readers)
+# and loaded back
+path = writejson(joinpath(tempdir(), "single_batch.quiver.json"), q; results = res)
+q2 = readjson(Quiver, path)
+println("\nSaved to $path and loaded back: the same brew? ",
+        all(brew(q2)[n] ≈ res[n] for n in nodes(q)))

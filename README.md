@@ -115,7 +115,7 @@ res = brew(q)
 requirements(res, q)                # what the brew uses of each ingredient
 shortages(lib, res, q)              # what the stock lacks for it
 consume!(lib, res, q)               # takes it from the stock
-write_beerjson("my_ingredients.json", lib)
+writejson("my_ingredients.json", lib)
 ```
 
 `Quiver(recipe; library = lib)` completes the additions of a recipe with the records of the
@@ -131,8 +131,28 @@ shares of each lot among the beers add up to what was used of it.
 
 BeerJSON recipes are linear, so a quiver is exported as one recipe per product, holding the
 shares of its lots: `recipe(res, q, product)`, `recipes(res, q)`, and
-`write_beerjson(path, res, q)` for a BeerJSON document. A recipe exported from a quiver and
+`writejson(path, res, q)` for a BeerJSON document. A recipe exported from a quiver and
 imported back (with the equipment of its kettle) brews to the same wort and beer.
+
+## Files of quivers
+
+A quiver is saved and loaded with `writejson` and `readjson` (extending those of
+BeerJSON.jl), as a [JSON Graph Format](https://jsongraphformat.info) (JGF) document: its
+nodes, with their initial contents and vessel, its arrows as edges in order, its
+equipment, and its ingredients as BeerJSON catalogue records.
+
+```julia
+writejson("bitter.quiver.json", q; results = brew(q))
+q = readjson(Quiver, "bitter.quiver.json")
+```
+
+With `results`, each node also gets the values computed by the brew (volume, gravities,
+alcohol, bitterness, color, carbonation, temperature, and the mash pH of mashes), so that
+other readers of JGF can show them; `readjson` ignores them, and `brew` computes them again.
+`nodeview(q, label)` is a dictionary of free data for interfaces (a position, a color, ...),
+which BrewQuiver does not use but keeps in the files. New arrow types are written once
+registered with `BrewQuiver.register_json_type`. (`write_beerjson` is deprecated in favor of
+`writejson`.)
 
 ## Step mashes, decoctions, hop stands and dry hops
 

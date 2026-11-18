@@ -272,12 +272,12 @@ recipes(res::BrewResult, q::Quiver; products = [n for n in res.order if isempty(
     [recipe(res, q, p; author) for p in res.order if p in products]
 
 """
-    write_beerjson(path, res::BrewResult, q::Quiver; products = ..., author = "")
+    writejson(path, res::BrewResult, q::Quiver; products = ..., author = "")
 
 Writes the BeerJSON recipes of the `products` of the brew `res` of `q` (see
 [`recipes`](@ref)) to a BeerJSON document at `path`.
 """
-function write_beerjson(path::AbstractString, res::BrewResult, q::Quiver; kwargs...)
+function BJ.writejson(path::AbstractString, res::BrewResult, q::Quiver; kwargs...)
     doc = BJ.BeerJSONParser{_BJI, _BJT}(beerjson = (version = 1.0, recipes = recipes(res, q; kwargs...)))
     BJ.writejson(path, doc)
     return path
