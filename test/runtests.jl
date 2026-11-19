@@ -375,6 +375,43 @@ end
     @test nodes(q6) == [:w, :c, :d, :e, :b]
     q6[:w] = water(20u"L")                          # replacing keeps the place
     @test nodes(q6) == [:w, :c, :d, :e, :b]
+
+    # one arrow among several between the same nodes
+    q = single_batch()
+    first_, second = q[:goldings => :kettle]
+    @test q[:goldings => :kettle, 2] === second
+    late = Transfer(20u"g"; remaining = 5u"minute")
+    q[:goldings => :kettle, 2] = late
+    @test q[:goldings => :kettle] == [first_, late]
+    @test_throws ArgumentError q[:goldings => :kettle, 3]
+    @test_throws ArgumentError q[:goldings => :kettle, 0] = late
+    @test_throws ArgumentError q[:goldings => :mash, 1]
+    @test_throws ArgumentError q[:rested => :grain_bed, 1] = Drain()   # a second drain
+    @test q[:rested => :grain_bed] == [Transfer()]
+    disconnect!(q, :goldings => :kettle, 1)
+    @test q[:goldings => :kettle] == [late]
+    disconnect!(q, :goldings => :kettle, 1)                           # the last one: no edge
+    @test :kettle ∉ successors(q, :goldings)
+    @test_throws ArgumentError disconnect!(q, :goldings => :kettle, 1)
+
+    # renaming a node in place
+    q = single_batch()
+    nodeview(q, :kettle)["position"] = [1, 2]
+    before, beer = nodes(q), brew(q)[:bottles]
+    doc = sprint(io -> writejson(io, q))
+    hops = q[:goldings => :kettle]
+    rename!(q, :kettle, :boiler)
+    @test nodes(q) == replace(before, :kettle => :boiler)
+    @test !haskey(q, :kettle) && vessel(q, :boiler) == :kettle
+    @test nodeview(q, :boiler) == Dict("position" => [1, 2])
+    @test Set(predecessors(q, :boiler)) == Set([:rested, :grain_bed, :goldings])
+    @test q[:goldings => :boiler] == hops && successors(q, :boiler) == [:wort]
+    @test brew(q)[:bottles] ≈ beer
+    @test_throws ArgumentError rename!(q, :kettle, :other)                # missing
+    @test_throws ArgumentError rename!(q, :boiler, :wort)                 # taken
+    @test rename!(q, :boiler, :boiler) === q
+    rename!(q, :boiler, :kettle)
+    @test sprint(io -> writejson(io, q)) == doc
 end
 
 @testset "Rebrew" begin

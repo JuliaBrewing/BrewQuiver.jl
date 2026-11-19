@@ -45,6 +45,10 @@ the API reference.
     contents of a node into the next stage of the vessel. They act on what is in the node:
     the grain that was mashed in, the hops in the kettle, each for its own time, the culture
     that was pitched, the priming sugar in the bottling bucket.
+- The arrows between two nodes are kept in order: `q[source => destination, i]` reads the
+  `i`-th one, `q[source => destination, i] = arrow` replaces it, and
+  `disconnect!(q, source => destination, i)` removes it; `rename!(q, old, new)` renames a
+  node in place, keeping its place in the quiver.
 - **`brew(q)`** computes the nodes in topological order and returns a `BrewResult`:
   `res[label]` is the contents of a node and `res[source => destination]` what its arrows
   did. What no arrow takes is kept as a leftover (spent grain, trub, yeast cake), so with

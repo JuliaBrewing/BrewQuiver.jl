@@ -133,6 +133,37 @@ function Base.setindex!(q::Quiver, a::AbstractArrow, e::Pair{Symbol, Symbol})
     return q
 end
 
+# the `i`-th arrow from `s` to `d`, checked
+function _arrow_index(q::Quiver, e::Pair{Symbol, Symbol}, i::Integer)
+    haskey(q.graph, e.first, e.second) ||
+        throw(ArgumentError("there is no arrow from :$(e.first) to :$(e.second)"))
+    n = length(q.graph[e.first, e.second])
+    1 ≤ i ≤ n || throw(ArgumentError("there are $n arrows from :$(e.first) to :$(e.second), not $i"))
+    return i
+end
+
+"""
+    q[source => destination, i]
+
+The `i`-th of the arrows from `source` to `destination`, in the order they were connected.
+"""
+Base.getindex(q::Quiver, e::Pair{Symbol, Symbol}, i::Integer) = (_arrow_index(q, e, i); q[e][i])
+
+"""
+    q[source => destination, i] = arrow
+
+Replaces the `i`-th of the arrows from `source` to `destination` by `arrow`, keeping the
+others in order (e.g. the second of two hop additions from the same lot).
+"""
+function Base.setindex!(q::Quiver, a::AbstractArrow, e::Pair{Symbol, Symbol}, i::Integer)
+    _arrow_index(q, e, i)
+    as = q.graph[e.first, e.second]
+    _check_arrows(q, e.first, [a; [b for (j, b) in enumerate(as) if j != i];
+                               [b for d in successors(q, e.first) if d != e.second for b in q[e.first => d]]])
+    as[i] = a
+    return q
+end
+
 """
     nodes(q::Quiver)
 
@@ -232,12 +263,45 @@ _outgoing(q::Quiver, label::Symbol) =
 
 """
     disconnect!(q::Quiver, source => destination)
+    disconnect!(q::Quiver, source => destination, i)
 
-Removes all the arrows from `source` to `destination`.
+Removes all the arrows from `source` to `destination`, or only the `i`-th of them, keeping
+the others in order.
 """
 function disconnect!(q::Quiver, e::Pair{Symbol, Symbol})
     haskey(q.graph, e.first, e.second) &&
         rem_edge!(q.graph, code_for(q.graph, e.first), code_for(q.graph, e.second))
+    return q
+end
+function disconnect!(q::Quiver, e::Pair{Symbol, Symbol}, i::Integer)
+    _arrow_index(q, e, i)
+    as = q.graph[e.first, e.second]
+    length(as) == 1 ? disconnect!(q, e) : deleteat!(as, i)
+    return q
+end
+
+"""
+    rename!(q::Quiver, old, new)
+
+Renames the node `old` to `new`, keeping its contents, vessel, view and arrows, and its
+place in the order of the nodes and of the arrows (so that renaming it back gives the same
+quiver, and the same file). Brew again afterwards (`rebrew!(res, q, new)` will do).
+"""
+function rename!(q::Quiver, old::Symbol, new::Symbol)
+    haskey(q, old) || throw(ArgumentError("there is no node labelled :$old"))
+    old == new && return q
+    haskey(q, new) && throw(ArgumentError("there is already a node labelled :$new"))
+    # in place on the fields of the MetaGraph (MetaGraphsNext 0.8), keeping the codes of the
+    # vertices: removing and adding the vertex would renumber them, and reorder the arrows
+    g = q.graph
+    code, data = pop!(g.vertex_properties, old)
+    g.vertex_properties[new] = (code, data)
+    g.vertex_labels[code] = new
+    for (s, d) in collect(keys(g.edge_data))
+        (s == old || d == old) || continue
+        g.edge_data[(s == old ? new : s, d == old ? new : d)] = pop!(g.edge_data, (s, d))
+    end
+    q.rank[new] = pop!(q.rank, old)
     return q
 end
 

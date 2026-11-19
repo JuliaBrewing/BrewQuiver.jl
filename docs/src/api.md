@@ -92,8 +92,11 @@ add!
 connect!
 disconnect!
 remove!
+rename!
 Base.setindex!(::Quiver, ::Any, ::Symbol)
 Base.setindex!(::Quiver, ::AbstractArrow, ::Pair{Symbol, Symbol})
+Base.getindex(::Quiver, ::Pair{Symbol, Symbol}, ::Integer)
+Base.setindex!(::Quiver, ::AbstractArrow, ::Pair{Symbol, Symbol}, ::Integer)
 nodes
 arrows
 vessel
