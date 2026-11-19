@@ -87,7 +87,7 @@ products(r::BrewResult, q::Quiver) =
     brew(q::Quiver; models = (;))
 
 Computes all the nodes and arrows of `q`, in topological order, with the models of
-BrewingFormulas in `models` (a NamedTuple overriding [`DEFAULT_MODELS`](@ref), e.g.
+BrewingFormulas in `models` (a NamedTuple overriding BrewingFormulas' `DEFAULT_MODELS`, e.g.
 `(bitterness = Rager(), color = Daniels())`). Returns a [`BrewResult`](@ref).
 """
 function brew(q::Quiver; models::NamedTuple = (;))

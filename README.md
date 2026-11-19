@@ -1,5 +1,6 @@
 # BrewQuiver
 
+[![Docs (dev)](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliabrewing.github.io/BrewQuiver.jl/dev/)
 [![CI](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml)
 
 The engine of the BrewQuiver brewing software, in pure Julia: the brewing process as a
@@ -18,6 +19,10 @@ both taken from GitHub through the `[sources]` of `Project.toml` (Julia 1.11 or 
 using Pkg
 Pkg.add(url = "https://github.com/JuliaBrewing/BrewQuiver.jl")
 ```
+
+The [documentation](https://juliabrewing.github.io/BrewQuiver.jl/dev/) has the concepts,
+tutorials (a single batch, a parti-gyle, a BeerJSON recipe), a guide to each feature and
+the API reference.
 
 ## Design
 
