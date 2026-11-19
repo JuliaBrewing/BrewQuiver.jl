@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="referrer" content="no-referrer"/><title>A single batch · BrewQuiver.jl</title><meta name="title" content="A single batch · BrewQuiver.jl"/><meta property="og:title" content="A single batch · BrewQuiver.jl"/><meta property="twitter:title" content="A single batch · BrewQuiver.jl"/><meta name="description" content="Documentation for BrewQuiver.jl."/><meta property="og:description" content="Documentation for BrewQuiver.jl."/><meta property="twitter:description" content="Documentation for BrewQuiver.jl."/><meta property="og:url" content="https://juliabrewing.github.io/BrewQuiver.jl/tutorials/single_batch/"/><meta property="twitter:url" content="https://juliabrewing.github.io/BrewQuiver.jl/tutorials/single_batch/"/><link rel="canonical" href="https://juliabrewing.github.io/BrewQuiver.jl/tutorials/single_batch/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">BrewQuiver.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../concepts/">Concepts</a></li><li><span class="tocitem">Tutorials</span><ul><li class="is-active"><a class="tocitem" href>A single batch</a><ul class="internal"><li><a class="tocitem" href="#The-ingredients"><span>The ingredients</span></a></li><li><a class="tocitem" href="#The-lots"><span>The lots</span></a></li><li><a class="tocitem" href="#The-stages"><span>The stages</span></a></li><li><a class="tocitem" href="#The-equipment"><span>The equipment</span></a></li><li><a class="tocitem" href="#The-arrows"><span>The arrows</span></a></li><li><a class="tocitem" href="#Brewing"><span>Brewing</span></a></li><li><a class="tocitem" href="#Where-everything-went"><span>Where everything went</span></a></li><li><a class="tocitem" href="#Changing-the-brew"><span>Changing the brew</span></a></li><li><a class="tocitem" href="#Next"><span>Next</span></a></li></ul></li><li><a class="tocitem" href="../partigyle/">A parti-gyle</a></li><li><a class="tocitem" href="../beerjson/">A BeerJSON recipe</a></li></ul></li><li><span class="tocitem">Guide</span><ul><li><a class="tocitem" href="../../guide/equipment/">Equipment</a></li><li><a class="tocitem" href="../../guide/techniques/">Mashes, decoctions, stands and dry hops</a></li><li><a class="tocitem" href="../../guide/water/">Water chemistry</a></li><li><a class="tocitem" href="../../guide/timeline/">Timeline</a></li><li><a class="tocitem" href="../../guide/solving/">Targets and solving</a></li><li><a class="tocitem" href="../../guide/provenance/">Provenance and export</a></li><li><a class="tocitem" href="../../guide/library/">Ingredient library</a></li><li><a class="tocitem" href="../../guide/files/">Files of quivers</a></li><li><a class="tocitem" href="../../guide/extending/">Extending BrewQuiver</a></li></ul></li><li><a class="tocitem" href="../../api/">API reference</a></li><li><a class="tocitem" href="../../references/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>A single batch</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>A single batch</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaBrewing/BrewQuiver.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/JuliaBrewing/BrewQuiver.jl/blob/main/docs/src/tutorials/single_batch.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="A-single-batch"><a class="docs-heading-anchor" href="#A-single-batch">A single batch</a><a id="A-single-batch-1"></a><a class="docs-heading-anchor-permalink" href="#A-single-batch" title="Permalink"></a></h1><p>This tutorial builds the quiver of an all-grain English bitter, step by step: a mash with a batch sparge, a boil with two hop additions, a fermentation and bottle conditioning. It then brews it, reads the results, and checks where every gram went.</p><h2 id="The-ingredients"><a class="docs-heading-anchor" href="#The-ingredients">The ingredients</a><a id="The-ingredients-1"></a><a class="docs-heading-anchor-permalink" href="#The-ingredients" title="Permalink"></a></h2><p>Ingredients are working types built from their brewing parameters, with units:</p><pre><code class="language-julia hljs">using Unitful, UnitfulBrewing, BrewingFormulas, BrewQuiver
+
+pale     = Fermentable(&quot;Pale ale malt&quot;; yield = 80u&quot;percent&quot;, color = 3u&quot;°L&quot;)
+crystal  = Fermentable(&quot;Crystal 60&quot;; yield = 74u&quot;percent&quot;, color = 60u&quot;°L&quot;)
+goldings = Hop(&quot;East Kent Goldings&quot;; alpha = 5u&quot;percent&quot;)
+ale      = Culture(&quot;English ale&quot;; attenuation = 75u&quot;percent&quot;)
+dextrose = Fermentable(&quot;Corn sugar&quot;; kind = :sugar, yield = 100u&quot;percent&quot;, color = 0u&quot;SRM&quot;,
+                       moisture = 0)</code></pre><p>A <a href="../../api/#BrewQuiver.Fermentable"><code>Fermentable</code></a> has a <code>kind</code> (<code>:grain</code> by default, <code>:sugar</code>, <code>:extract</code>, ...), a yield (fine grind, as is), a color and a moisture (4% for grains by default). A <a href="../../api/#BrewQuiver.Hop"><code>Hop</code></a> has its alpha acids and form (pellets by default); a <a href="../../api/#BrewQuiver.Culture"><code>Culture</code></a> its apparent attenuation.</p><h2 id="The-lots"><a class="docs-heading-anchor" href="#The-lots">The lots</a><a id="The-lots-1"></a><a class="docs-heading-anchor-permalink" href="#The-lots" title="Permalink"></a></h2><p>The <strong>lots</strong> are the sources of the quiver: an ingredient with its amount, or a liquor.</p><pre><code class="language-julia hljs">q = Quiver()
+add!(q, :pale, pale =&gt; 4.5u&quot;kg&quot;)
+add!(q, :crystal, crystal =&gt; 0.3u&quot;kg&quot;)
+add!(q, :goldings, goldings =&gt; 50u&quot;g&quot;)
+add!(q, :yeast, ale =&gt; 1)                                   # one pack
+add!(q, :strike_water, water(16u&quot;L&quot;; temperature = 75u&quot;°C&quot;))
+add!(q, :sparge_water, water(14u&quot;L&quot;; temperature = 80u&quot;°C&quot;))
+add!(q, :priming_sugar, dextrose =&gt; 110u&quot;g&quot;)</code></pre><h2 id="The-stages"><a class="docs-heading-anchor" href="#The-stages">The stages</a><a id="The-stages-1"></a><a class="docs-heading-anchor-permalink" href="#The-stages" title="Permalink"></a></h2><p>Each vessel goes through <strong>stages</strong>, empty nodes filled by the arrows. The mash tun holds the mash (grain and water), the rested mash (converted), then the grain bed being sparged; the kettle holds the wort before and after the boil, then chilled:</p><pre><code class="language-julia hljs">add!(q, :mash, :rested, :grain_bed; vessel = :mashtun)
+add!(q, :kettle, :wort, :chilled; vessel = :kettle)
+add!(q, :fermentor, :beer; vessel = :fermentor)
+add!(q, :bottling, :bottles; vessel = :bottles)</code></pre><h2 id="The-equipment"><a class="docs-heading-anchor" href="#The-equipment">The equipment</a><a id="The-equipment-1"></a><a class="docs-heading-anchor-permalink" href="#The-equipment" title="Permalink"></a></h2><p>The <a href="../../api/#BrewQuiver.Vessel"><code>Vessel</code></a>s give what the arrows leaving their stages do not say: the grain absorption and dead space of the mash tun, the evaporation rate of the kettle, the drain rates (see <a href="../../guide/equipment/">Equipment</a>).</p><pre><code class="language-julia hljs">equip!(q, :mashtun, Vessel(name = &quot;Cooler&quot;, capacity = 36u&quot;L&quot;, absorption = 1.0u&quot;L/kg&quot;,
+                           dead_space = 0.5u&quot;L&quot;, drain_rate = 1u&quot;L/minute&quot;))
+equip!(q, :kettle, Vessel(name = &quot;Kettle&quot;, capacity = 36u&quot;L&quot;, evaporation = 4u&quot;L/hr&quot;,
+                          dead_space = 1u&quot;L&quot;, drain_rate = 1.5u&quot;L/minute&quot;))
+equip!(q, :fermentor, Vessel(name = &quot;Bucket&quot;, capacity = 30u&quot;L&quot;, dead_space = 1u&quot;L&quot;))</code></pre><h2 id="The-arrows"><a class="docs-heading-anchor" href="#The-arrows">The arrows</a><a id="The-arrows-1"></a><a class="docs-heading-anchor-permalink" href="#The-arrows" title="Permalink"></a></h2><p>The mash: the strike water and the grain go to the mash tun, which rests at 67 °C. The first runnings are drained to the kettle; the grain, with the wort it absorbed, stays as the grain bed, which gets the sparge water and is drained again (a batch sparge).</p><pre><code class="language-julia hljs">connect!(q, [:strike_water, :pale, :crystal] =&gt; :mash)
+connect!(q, :mash =&gt; :rested, MashRest(temperature = 67u&quot;°C&quot;, time = 60u&quot;minute&quot;))
+connect!(q, :rested =&gt; :kettle, Drain())                    # first runnings
+connect!(q, :rested =&gt; :grain_bed)                          # the rest: grain and absorbed wort
+connect!(q, :sparge_water =&gt; :grain_bed)
+connect!(q, :grain_bed =&gt; :kettle, Drain())                 # second runnings</code></pre><p>The boil: two additions from the same lot of hops, with 60 and 10 minutes of boil left. They are two arrows between the same nodes, which is why the graph is a <em>multi</em>graph.</p><pre><code class="language-julia hljs">connect!(q, :goldings =&gt; :kettle, Transfer(30u&quot;g&quot;; remaining = 60u&quot;minute&quot;))
+connect!(q, :goldings =&gt; :kettle, Transfer(20u&quot;g&quot;; remaining = 10u&quot;minute&quot;))
+connect!(q, :kettle =&gt; :wort, Boil(time = 60u&quot;minute&quot;))
+connect!(q, :wort =&gt; :chilled, Chill(temperature = 20u&quot;°C&quot;, time = 25u&quot;minute&quot;))</code></pre><p>The fermentation and the bottling: the chilled wort is drained off the trub and hops, the yeast is pitched, and the beer is drained off its yeast cake onto the priming sugar.</p><pre><code class="language-julia hljs">connect!(q, :chilled =&gt; :fermentor, Drain())
+connect!(q, :yeast =&gt; :fermentor)
+connect!(q, :fermentor =&gt; :beer, Ferment(temperature = 20u&quot;°C&quot;, time = 14u&quot;d&quot;))
+connect!(q, :priming_sugar =&gt; :bottling)
+connect!(q, :beer =&gt; :bottling, Drain())
+connect!(q, :bottling =&gt; :bottles, Prime(sugar = CornSugar()))
+q</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Quiver with 17 nodes and 18 arrows
+  lots
+    :pale  4.5 kg Pale ale malt
+        Transfer(all) → :mash
+    :crystal  300.0 g Crystal 60
+        Transfer(all) → :mash
+    :goldings  50.0 g East Kent Goldings
+        Transfer(30.0 g, 60.0 min remaining) → :kettle
+        Transfer(20.0 g, 10.0 min remaining) → :kettle
+    :yeast  1 × English ale
+        Transfer(all) → :fermentor
+    :strike_water  16.0 L, 1.0 sg, 75.0 °C
+        Transfer(all) → :mash
+    :sparge_water  14.0 L, 1.0 sg, 80.0 °C
+        Transfer(all) → :grain_bed
+    :priming_sugar  110.0 g Corn sugar
+        Transfer(all) → :bottling
+  [mashtun]  Vessel(&quot;Cooler&quot;; 36.0 L, 0.5 L dead space, 1.0 L/kg absorbed, draining 1.0 L/min)
+    :mash
+        MashRest(67.0 °C, 60.0 min) → :rested
+    :rested
+        Transfer(rest) → :grain_bed
+        Drain() → :kettle
+    :grain_bed
+        Drain() → :kettle
+  [kettle]  Vessel(&quot;Kettle&quot;; 36.0 L, 1.0 L dead space, evaporating 4.0 L/h, draining 1.5 L/min)
+    :kettle
+        Boil(60.0 min) → :wort
+    :wort
+        Chill(20.0 °C, 25.0 min) → :chilled
+    :chilled
+        Drain() → :fermentor
+  [fermentor]  Vessel(&quot;Bucket&quot;; 30.0 L, 1.0 L dead space)
+    :fermentor
+        Ferment(20.0 °C, 14.0 d) → :beer
+    :beer
+        Drain() → :bottling
+  [bottles]
+    :bottling
+        Prime(CornSugar, 14.0 d) → :bottles
+    :bottles</code></pre><h2 id="Brewing"><a class="docs-heading-anchor" href="#Brewing">Brewing</a><a id="Brewing-1"></a><a class="docs-heading-anchor-permalink" href="#Brewing" title="Permalink"></a></h2><p><a href="../../api/#BrewQuiver.brew"><code>brew</code></a> computes every node, in topological order:</p><pre><code class="language-julia hljs">res = brew(q)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">BrewResult
+  lots
+    :pale  4.5 kg Pale ale malt
+    :crystal  300.0 g Crystal 60
+    :goldings  50.0 g East Kent Goldings
+    :yeast  1 × English ale
+    :strike_water  16.0 L, 1.0 sg, 75.0 °C
+    :sparge_water  14.0 L, 1.0 sg, 80.0 °C
+    :priming_sugar  110.0 g Corn sugar
+  [mashtun]
+    :mash  16.0 L, 1.0 sg, 75.0 °C; 4.5 kg Pale ale malt, 300.0 g Crystal 60
+    :rested  18.35 L, 1.073 sg, 9.3 SRM, 67.0 °C; 1.122 kg spent grain (from 4.8 kg grain)
+    :grain_bed  19.3 L, 1.0202 sg, 3.8 SRM, 76.2 °C; 1.122 kg spent grain (from 4.8 kg grain)
+        left: 5.3 L, 1.0202 sg, 3.8 SRM, 76.2 °C; 1.122 kg spent grain (from 4.8 kg grain)
+  [kettle]
+    :kettle  27.04 L, 1.0457 sg, 6.7 SRM, 71.7 °C; 30.0 g East Kent Goldings (60.0 min remaining), 20.0 g East Kent Goldings (10.0 min remaining)
+    :wort  23.04 L, 1.0536 sg, 20.6 IBU, 7.5 SRM, 100.0 °C; 49.5 g hop matter
+    :chilled  23.04 L, 1.0536 sg, 20.6 IBU, 7.5 SRM, 20.0 °C; 49.5 g hop matter
+        left: 1.0 L, 1.0536 sg, 20.6 IBU, 7.5 SRM, 20.0 °C; 49.5 g hop matter
+  [fermentor]
+    :fermentor  22.04 L, 1.0536 sg, 20.6 IBU, 7.5 SRM, 20.0 °C; 1 × English ale
+    :beer  21.94 L, 1.013 sg (OG 1.0536), 5.41% ABV, 20.7 IBU, 7.5 SRM, 0.86 vols, 20.0 °C; 103.1 g yeast
+        left: 1.0 L, 1.013 sg (OG 1.0536), 5.41% ABV, 20.7 IBU, 7.5 SRM, 0.86 vols, 20.0 °C; 103.1 g yeast
+  [bottles]
+    :bottling  20.94 L, 1.013 sg (OG 1.0536), 5.41% ABV, 20.7 IBU, 7.5 SRM, 0.86 vols, 20.0 °C; 110.0 g Corn sugar
+    :bottles  21.01 L, 1.0125 sg (OG 1.0553), 5.7% ABV, 20.6 IBU, 7.5 SRM, 2.04 vols, 20.0 °C</code></pre><p>Each node is a <a href="../../api/#BrewQuiver.Contents"><code>Contents</code></a>, and the usual quantities derive from it:</p><pre><code class="language-julia hljs">res[:kettle]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Liquor: 27.04 L at 71.7 °C
+  gravity:     1.0457 sg (11.37 °P apparent, 11.37 °P real)
+  original:    1.0457 sg
+  alcohol:     0.0% ABV, 0.0% ABW
+  bitterness:  0.0 IBU
+  color:       6.7 SRM
+  carbonation: 0.0 vols
+  masses:      25.017 kg water, 3.209 kg extract, 0.0 kg alcohol
+Solids: 30.0 g East Kent Goldings (60.0 min remaining), 20.0 g East Kent Goldings (10.0 min remaining)</code></pre><pre><code class="language-julia hljs">beer = res[:bottles]
+(volume = volume(beer), og = original_gravity(beer), fg = gravity(beer),
+ abv = abv(beer), ibu = ibu(beer), color = srm(beer), co2 = carbonation(beer))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(volume = 21.00704350834883 L, og = 1.055334161217156 sg, fg = 1.0125386647372585 sg, abv = 5.704694168316063 %, ibu = 20.600786952768022 IBU, color = 7.495278870244144 SRM, co2 = 2.0350518043168946 vols)</code></pre><p>What happened along an arrow is in the <a href="../../api/#BrewQuiver.ArrowResult"><code>ArrowResult</code></a>s, e.g. the first runnings and the water evaporated by the boil:</p><pre><code class="language-julia hljs">only(res[:rested =&gt; :kettle]).moved</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Liquor: 13.05 L at 67.0 °C
+  gravity:     1.073 sg (17.74 °P apparent, 17.74 °P real)
+  original:    1.073 sg
+  alcohol:     0.0% ABV, 0.0% ABW
+  bitterness:  0.0 IBU
+  color:       9.3 SRM
+  carbonation: 0.0 vols
+  masses:      11.494 kg water, 2.479 kg extract, 0.0 kg alcohol</code></pre><pre><code class="language-julia hljs">only(res[:kettle =&gt; :wort]).released</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(water = 3.992812 kg, co2 = 0.0 kg)</code></pre><h2 id="Where-everything-went"><a class="docs-heading-anchor" href="#Where-everything-went">Where everything went</a><a id="Where-everything-went-1"></a><a class="docs-heading-anchor-permalink" href="#Where-everything-went" title="Permalink"></a></h2><p>What no arrow takes from a node is its leftover: the spent grain with the wort it holds, the trub and the hops, the yeast cake, and the products themselves.</p><pre><code class="language-julia hljs">leftovers(res)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dict{Symbol, Contents} with 4 entries:
+  :bottles   =&gt; Contents(21.01 L, 1.0125 sg (OG 1.0553), 5.7% ABV, 20.6 IBU, 7.…
+  :grain_bed =&gt; Contents(5.3 L, 1.0202 sg, 3.8 SRM, 76.2 °C; 1.122 kg spent gra…
+  :chilled   =&gt; Contents(1.0 L, 1.0536 sg, 20.6 IBU, 7.5 SRM, 20.0 °C; 49.5 g h…
+  :beer      =&gt; Contents(1.0 L, 1.013 sg (OG 1.0536), 5.41% ABV, 20.7 IBU, 7.5 …</code></pre><p>With what the arrows released, evaporated water and CO₂, the masses add up exactly to the lots:</p><pre><code class="language-julia hljs">initial = sum(total_mass(q[n].initial) for n in nodes(q))
+left = sum(total_mass, values(leftovers(res)))
+r = released(res)
+initial ≈ left + r.water + r.co2</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">true</code></pre><h2 id="Changing-the-brew"><a class="docs-heading-anchor" href="#Changing-the-brew">Changing the brew</a><a id="Changing-the-brew-1"></a><a class="docs-heading-anchor-permalink" href="#Changing-the-brew" title="Permalink"></a></h2><p>Arrows and lots can be replaced, and <a href="../../api/#BrewQuiver.rebrew!"><code>rebrew!</code></a> recomputes only what is downstream:</p><pre><code class="language-julia hljs">q[:kettle =&gt; :wort] = Boil(time = 90u&quot;minute&quot;)
+rebrew!(res, q, :kettle)
+(volume(res[:bottles]), original_gravity(res[:bottles]), ibu(res[:bottles]))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(19.006252605813405 L, 1.0605529710499653 sg, 22.0554214246574 IBU)</code></pre><h2 id="Next"><a class="docs-heading-anchor" href="#Next">Next</a><a id="Next-1"></a><a class="docs-heading-anchor-permalink" href="#Next" title="Permalink"></a></h2><ul><li>The <a href="../../guide/timeline/">timeline</a> of this brew, and its <a href="../../guide/solving/">targets</a>.</li><li>Its <a href="../../guide/water/">water chemistry</a> and mash pH.</li><li>Saving it: <a href="../../guide/files/#Files-of-quivers">Files of quivers</a>.</li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../concepts/">« Concepts</a><a class="docs-footer-nextpage" href="../partigyle/">A parti-gyle »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Thursday 19 November 2026 02:08">Thursday 19 November 2026</span>. Using Julia version 1.13.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
