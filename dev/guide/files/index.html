@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="referrer" content="no-referrer"/><title>Files of quivers · BrewQuiver.jl</title><meta name="title" content="Files of quivers · BrewQuiver.jl"/><meta property="og:title" content="Files of quivers · BrewQuiver.jl"/><meta property="twitter:title" content="Files of quivers · BrewQuiver.jl"/><meta name="description" content="Documentation for BrewQuiver.jl."/><meta property="og:description" content="Documentation for BrewQuiver.jl."/><meta property="twitter:description" content="Documentation for BrewQuiver.jl."/><meta property="og:url" content="https://juliabrewing.github.io/BrewQuiver.jl/guide/files/"/><meta property="twitter:url" content="https://juliabrewing.github.io/BrewQuiver.jl/guide/files/"/><link rel="canonical" href="https://juliabrewing.github.io/BrewQuiver.jl/guide/files/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">BrewQuiver.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../concepts/">Concepts</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../../tutorials/single_batch/">A single batch</a></li><li><a class="tocitem" href="../../tutorials/partigyle/">A parti-gyle</a></li><li><a class="tocitem" href="../../tutorials/beerjson/">A BeerJSON recipe</a></li></ul></li><li><span class="tocitem">Guide</span><ul><li><a class="tocitem" href="../equipment/">Equipment</a></li><li><a class="tocitem" href="../techniques/">Mashes, decoctions, stands and dry hops</a></li><li><a class="tocitem" href="../water/">Water chemistry</a></li><li><a class="tocitem" href="../timeline/">Timeline</a></li><li><a class="tocitem" href="../solving/">Targets and solving</a></li><li><a class="tocitem" href="../provenance/">Provenance and export</a></li><li><a class="tocitem" href="../library/">Ingredient library</a></li><li class="is-active"><a class="tocitem" href>Files of quivers</a><ul class="internal"><li><a class="tocitem" href="#Values-for-other-readers"><span>Values for other readers</span></a></li><li><a class="tocitem" href="#Node-views"><span>Node views</span></a></li><li><a class="tocitem" href="#The-format"><span>The format</span></a></li></ul></li><li><a class="tocitem" href="../extending/">Extending BrewQuiver</a></li></ul></li><li><a class="tocitem" href="../../api/">API reference</a></li><li><a class="tocitem" href="../../references/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Guide</a></li><li class="is-active"><a href>Files of quivers</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Files of quivers</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaBrewing/BrewQuiver.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/JuliaBrewing/BrewQuiver.jl/blob/main/docs/src/guide/files.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Files-of-quivers"><a class="docs-heading-anchor" href="#Files-of-quivers">Files of quivers</a><a id="Files-of-quivers-1"></a><a class="docs-heading-anchor-permalink" href="#Files-of-quivers" title="Permalink"></a></h1><p>A quiver is saved with <a href="../../api/#BeerJSON.BeerJSONTypes.writejson"><code>writejson</code></a> and loaded with <a href="../../api/#BeerJSON.BeerJSONTypes.readjson"><code>readjson</code></a> (the functions of BeerJSON.jl, extended), as a <a href="https://jsongraphformat.info">JSON Graph Format</a> (JGF) document, with its ingredients as BeerJSON catalogue records:</p><pre><code class="language-julia hljs">writejson(&quot;bitter.quiver.json&quot;, q; results = brew(q))
+q = readjson(Quiver, &quot;bitter.quiver.json&quot;)</code></pre><p>Both also take an <code>IO</code> instead of a path. The file keeps the whole quiver, the order of construction of its nodes, its equipment and the <a href="../../api/#BrewQuiver.nodeview"><code>nodeview</code></a>s, so that a quiver read back brews exactly as the original.</p><h2 id="Values-for-other-readers"><a class="docs-heading-anchor" href="#Values-for-other-readers">Values for other readers</a><a id="Values-for-other-readers-1"></a><a class="docs-heading-anchor-permalink" href="#Values-for-other-readers" title="Permalink"></a></h2><p>With <code>results = brew(q)</code>, each node also gets the values <strong>computed</strong> by the brew (volume, gravity, original gravity, ABV, IBU, color, carbonation, temperature, and the mash pH of mashes), and the graph the names of the models used. Other readers of JGF can show them without a brewing engine. <code>readjson</code> <strong>ignores them</strong>: they are computed again by <a href="../../api/#BrewQuiver.brew"><code>brew</code></a>.</p><h2 id="Node-views"><a class="docs-heading-anchor" href="#Node-views">Node views</a><a id="Node-views-1"></a><a class="docs-heading-anchor-permalink" href="#Node-views" title="Permalink"></a></h2><p><a href="../../api/#BrewQuiver.nodeview"><code>nodeview</code></a><code>(q, label)</code> is a <code>Dict{String, Any}</code> of free data for interfaces (a position, a color, a collapsed state, ...), which BrewQuiver does not use but keeps in the files, and keeps when the contents of the node are replaced:</p><pre><code class="language-julia hljs">q = single_batch()
+nodeview(q, :mash)[&quot;position&quot;] = [0, 1]
+path = writejson(tempname() * &quot;.json&quot;, q)
+nodeview(readjson(Quiver, path), :mash)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dict{String, Any} with 1 entry:
+  &quot;position&quot; =&gt; Any[0, 1]</code></pre><h2 id="The-format"><a class="docs-heading-anchor" href="#The-format">The format</a><a id="The-format-1"></a><a class="docs-heading-anchor-permalink" href="#The-format" title="Permalink"></a></h2><p>A small quiver, a kettle of wort with its hops boiled:</p><pre><code class="language-julia hljs">q = Quiver()
+add!(q, :wort_in, wort(20u&quot;L&quot;, 1.045u&quot;sg&quot;; temperature = 100u&quot;°C&quot;))
+add!(q, :goldings, goldings =&gt; 30u&quot;g&quot;)
+add!(q, :kettle, :hopped; vessel = :kettle)
+connect!(q, :wort_in =&gt; :kettle)
+connect!(q, :goldings =&gt; :kettle, Transfer(; remaining = 60u&quot;minute&quot;))
+connect!(q, :kettle =&gt; :hopped, Boil(time = 60u&quot;minute&quot;, evaporation = 3u&quot;L/hr&quot;))
+nodeview(q, :kettle)[&quot;position&quot;] = [1, 0]
+io = IOBuffer()
+writejson(io, q; results = brew(q))
+print(String(take!(io)))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;graph&quot;: {
+    &quot;directed&quot;: true,
+    &quot;edges&quot;: [
+      {
+        &quot;metadata&quot;: {
+          &quot;arrow&quot;: {
+            &quot;duration&quot;: {
+              &quot;unit&quot;: &quot;min&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;type&quot;: &quot;Transfer&quot;
+          }
+        },
+        &quot;relation&quot;: &quot;Transfer&quot;,
+        &quot;source&quot;: &quot;wort_in&quot;,
+        &quot;target&quot;: &quot;kettle&quot;
+      },
+      {
+        &quot;metadata&quot;: {
+          &quot;arrow&quot;: {
+            &quot;duration&quot;: {
+              &quot;unit&quot;: &quot;min&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;timing&quot;: {
+              &quot;time&quot;: {
+                &quot;unit&quot;: &quot;min&quot;,
+                &quot;value&quot;: 60.0
+              },
+              &quot;type&quot;: &quot;Remaining&quot;
+            },
+            &quot;type&quot;: &quot;Transfer&quot;
+          }
+        },
+        &quot;relation&quot;: &quot;Transfer&quot;,
+        &quot;source&quot;: &quot;goldings&quot;,
+        &quot;target&quot;: &quot;kettle&quot;
+      },
+      {
+        &quot;metadata&quot;: {
+          &quot;arrow&quot;: {
+            &quot;evaporation&quot;: {
+              &quot;unit&quot;: &quot;l/hr&quot;,
+              &quot;value&quot;: 3.0
+            },
+            &quot;stand&quot;: {
+              &quot;unit&quot;: &quot;min&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;stand_temperature&quot;: {
+              &quot;unit&quot;: &quot;C&quot;,
+              &quot;value&quot;: 80.0
+            },
+            &quot;time&quot;: {
+              &quot;unit&quot;: &quot;min&quot;,
+              &quot;value&quot;: 60.0
+            },
+            &quot;type&quot;: &quot;Boil&quot;
+          }
+        },
+        &quot;relation&quot;: &quot;Boil&quot;,
+        &quot;source&quot;: &quot;kettle&quot;,
+        &quot;target&quot;: &quot;hopped&quot;
+      }
+    ],
+    &quot;metadata&quot;: {
+      &quot;brewquiver_version&quot;: &quot;0.0.12&quot;,
+      &quot;computed&quot;: {
+        &quot;brewquiver_version&quot;: &quot;0.0.12&quot;,
+        &quot;models&quot;: {
+          &quot;abv&quot;: &quot;Balling&quot;,
+          &quot;bitterness&quot;: &quot;Tinseth&quot;,
+          &quot;color&quot;: &quot;Morey&quot;,
+          &quot;gravity&quot;: &quot;SugarGravityQuad&quot;,
+          &quot;refractometer&quot;: &quot;TerrillCubic&quot;
+        }
+      },
+      &quot;equipment&quot;: {},
+      &quot;format&quot;: &quot;BrewQuiver&quot;,
+      &quot;format_version&quot;: 1,
+      &quot;ingredients&quot;: {
+        &quot;cultures&quot;: [],
+        &quot;fermentables&quot;: [],
+        &quot;hop_varieties&quot;: [
+          {
+            &quot;name&quot;: &quot;East Kent Goldings&quot;,
+            &quot;form&quot;: &quot;pellet&quot;,
+            &quot;alpha_acid&quot;: {
+              &quot;unit&quot;: &quot;%&quot;,
+              &quot;value&quot;: 5
+            }
+          }
+        ]
+      }
+    },
+    &quot;nodes&quot;: {
+      &quot;goldings&quot;: {
+        &quot;label&quot;: &quot;goldings&quot;,
+        &quot;metadata&quot;: {
+          &quot;initial&quot;: {
+            &quot;liquor&quot;: {
+              &quot;alcohol&quot;: {
+                &quot;unit&quot;: &quot;kg&quot;,
+                &quot;value&quot;: 0.0
+              },
+              &quot;co2&quot;: {
+                &quot;unit&quot;: &quot;g&quot;,
+                &quot;value&quot;: 0.0
+              },
+              &quot;color&quot;: 0.0,
+              &quot;extract&quot;: {
+                &quot;unit&quot;: &quot;kg&quot;,
+                &quot;value&quot;: 0.0
+              },
+              &quot;isoalpha&quot;: {
+                &quot;unit&quot;: &quot;mg&quot;,
+                &quot;value&quot;: 0.0
+              },
+              &quot;minerals&quot;: {
+                &quot;alkalinity&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;calcium&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;chloride&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;magnesium&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;other&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;sodium&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;sulfate&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;type&quot;: &quot;Minerals&quot;
+              },
+              &quot;temperature&quot;: {
+                &quot;unit&quot;: &quot;C&quot;,
+                &quot;value&quot;: 20.0
+              },
+              &quot;type&quot;: &quot;Liquor&quot;,
+              &quot;water&quot;: {
+                &quot;unit&quot;: &quot;kg&quot;,
+                &quot;value&quot;: 0.0
+              }
+            },
+            &quot;solids&quot;: [
+              {
+                &quot;amount&quot;: {
+                  &quot;unit&quot;: &quot;kg&quot;,
+                  &quot;value&quot;: 0.03
+                },
+                &quot;ingredient&quot;: &quot;East Kent Goldings&quot;,
+                &quot;timing&quot;: null,
+                &quot;type&quot;: &quot;Portion&quot;
+              }
+            ],
+            &quot;type&quot;: &quot;Contents&quot;
+          },
+          &quot;rank&quot;: 2
+        }
+      },
+      &quot;hopped&quot;: {
+        &quot;label&quot;: &quot;hopped&quot;,
+        &quot;metadata&quot;: {
+          &quot;computed&quot;: {
+            &quot;abv&quot;: {
+              &quot;unit&quot;: &quot;%&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;carbonation&quot;: {
+              &quot;unit&quot;: &quot;vols&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;color&quot;: {
+              &quot;unit&quot;: &quot;SRM&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;gravity&quot;: {
+              &quot;unit&quot;: &quot;sg&quot;,
+              &quot;value&quot;: 1.0528861607531577
+            },
+            &quot;ibu&quot;: {
+              &quot;unit&quot;: &quot;IBU&quot;,
+              &quot;value&quot;: 22.600473981769877
+            },
+            &quot;original_gravity&quot;: {
+              &quot;unit&quot;: &quot;sg&quot;,
+              &quot;value&quot;: 1.0528861607531577
+            },
+            &quot;temperature&quot;: {
+              &quot;unit&quot;: &quot;C&quot;,
+              &quot;value&quot;: 100.0
+            },
+            &quot;volume&quot;: {
+              &quot;unit&quot;: &quot;l&quot;,
+              &quot;value&quot;: 17.000888289001395
+            }
+          },
+          &quot;rank&quot;: 4,
+          &quot;vessel&quot;: &quot;kettle&quot;
+        }
+      },
+      &quot;kettle&quot;: {
+        &quot;label&quot;: &quot;kettle&quot;,
+        &quot;metadata&quot;: {
+          &quot;computed&quot;: {
+            &quot;abv&quot;: {
+              &quot;unit&quot;: &quot;%&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;carbonation&quot;: {
+              &quot;unit&quot;: &quot;vols&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;color&quot;: {
+              &quot;unit&quot;: &quot;SRM&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;gravity&quot;: {
+              &quot;unit&quot;: &quot;sg&quot;,
+              &quot;value&quot;: 1.045
+            },
+            &quot;ibu&quot;: {
+              &quot;unit&quot;: &quot;IBU&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;original_gravity&quot;: {
+              &quot;unit&quot;: &quot;sg&quot;,
+              &quot;value&quot;: 1.045
+            },
+            &quot;temperature&quot;: {
+              &quot;unit&quot;: &quot;C&quot;,
+              &quot;value&quot;: 99.99999999999999
+            },
+            &quot;volume&quot;: {
+              &quot;unit&quot;: &quot;l&quot;,
+              &quot;value&quot;: 20.0
+            }
+          },
+          &quot;rank&quot;: 3,
+          &quot;vessel&quot;: &quot;kettle&quot;,
+          &quot;view&quot;: {
+            &quot;position&quot;: [
+              1,
+              0
+            ]
+          }
+        }
+      },
+      &quot;wort_in&quot;: {
+        &quot;label&quot;: &quot;wort_in&quot;,
+        &quot;metadata&quot;: {
+          &quot;computed&quot;: {
+            &quot;abv&quot;: {
+              &quot;unit&quot;: &quot;%&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;carbonation&quot;: {
+              &quot;unit&quot;: &quot;vols&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;color&quot;: {
+              &quot;unit&quot;: &quot;SRM&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;gravity&quot;: {
+              &quot;unit&quot;: &quot;sg&quot;,
+              &quot;value&quot;: 1.045
+            },
+            &quot;ibu&quot;: {
+              &quot;unit&quot;: &quot;IBU&quot;,
+              &quot;value&quot;: 0.0
+            },
+            &quot;original_gravity&quot;: {
+              &quot;unit&quot;: &quot;sg&quot;,
+              &quot;value&quot;: 1.045
+            },
+            &quot;temperature&quot;: {
+              &quot;unit&quot;: &quot;C&quot;,
+              &quot;value&quot;: 100.0
+            },
+            &quot;volume&quot;: {
+              &quot;unit&quot;: &quot;l&quot;,
+              &quot;value&quot;: 20.0
+            }
+          },
+          &quot;initial&quot;: {
+            &quot;liquor&quot;: {
+              &quot;alcohol&quot;: {
+                &quot;unit&quot;: &quot;kg&quot;,
+                &quot;value&quot;: 0.0
+              },
+              &quot;co2&quot;: {
+                &quot;unit&quot;: &quot;g&quot;,
+                &quot;value&quot;: 0.0
+              },
+              &quot;color&quot;: 0.0,
+              &quot;extract&quot;: {
+                &quot;unit&quot;: &quot;kg&quot;,
+                &quot;value&quot;: 2.3355642816332884
+              },
+              &quot;isoalpha&quot;: {
+                &quot;unit&quot;: &quot;mg&quot;,
+                &quot;value&quot;: 0.0
+              },
+              &quot;minerals&quot;: {
+                &quot;alkalinity&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;calcium&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;chloride&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;magnesium&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;other&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;sodium&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;sulfate&quot;: {
+                  &quot;unit&quot;: &quot;mg&quot;,
+                  &quot;value&quot;: 0.0
+                },
+                &quot;type&quot;: &quot;Minerals&quot;
+              },
+              &quot;temperature&quot;: {
+                &quot;unit&quot;: &quot;C&quot;,
+                &quot;value&quot;: 100.0
+              },
+              &quot;type&quot;: &quot;Liquor&quot;,
+              &quot;water&quot;: {
+                &quot;unit&quot;: &quot;kg&quot;,
+                &quot;value&quot;: 18.52687841836671
+              }
+            },
+            &quot;solids&quot;: [],
+            &quot;type&quot;: &quot;Contents&quot;
+          },
+          &quot;rank&quot;: 1
+        }
+      }
+    },
+    &quot;type&quot;: &quot;brewquiver&quot;
+  }
+}</code></pre><p>The document is a JGF graph:</p><ul><li><code>&quot;graph&quot;</code>: <code>&quot;type&quot;: &quot;brewquiver&quot;</code>, <code>&quot;directed&quot;: true</code>, and<ul><li><code>&quot;metadata&quot;</code>:<ul><li><code>&quot;format&quot;: &quot;BrewQuiver&quot;</code>, <code>&quot;format_version&quot;</code> (1; a newer version is refused by older readers), <code>&quot;brewquiver_version&quot;</code>;</li><li><code>&quot;ingredients&quot;</code>: <code>&quot;fermentables&quot;</code>, <code>&quot;hop_varieties&quot;</code> and <code>&quot;cultures&quot;</code>, as BeerJSON catalogue records (<code>FermentableType</code>, <code>VarietyInformation</code>, <code>CultureInformation</code>), by name. The buffering of a fermentable is an extra property, <code>&quot;buffering&quot;</code>. Two different ingredients cannot have the same name in a file.</li><li><code>&quot;equipment&quot;</code>: the vessels by name;</li><li><code>&quot;computed&quot;</code> (optional): the <code>&quot;models&quot;</code> of the brew.</li></ul></li><li><code>&quot;nodes&quot;</code>: by label, each with a <code>&quot;label&quot;</code> and a <code>&quot;metadata&quot;</code> holding<ul><li><code>&quot;rank&quot;</code>: the order of construction;</li><li><code>&quot;vessel&quot;</code>, if any;</li><li><code>&quot;initial&quot;</code>: the initial contents, omitted for the stages that start empty;</li><li><code>&quot;view&quot;</code>: the node view, if not empty;</li><li><code>&quot;computed&quot;</code> (optional): the values of the brew.</li></ul></li><li><code>&quot;edges&quot;</code>: one per arrow, in order, with <code>&quot;source&quot;</code>, <code>&quot;target&quot;</code>, <code>&quot;relation&quot;</code> (the type of the arrow) and <code>&quot;metadata&quot;: {&quot;arrow&quot;: ...}</code>.</li></ul></li></ul><p>Quantities are written as in BeerJSON, <code>{&quot;unit&quot;: ..., &quot;value&quot;: ...}</code>, in the units <code>kg</code>, <code>g</code>, <code>mg</code>, <code>l</code>, <code>ml</code>, <code>min</code>, <code>hr</code>, <code>day</code>, <code>C</code>, <code>l/kg</code>, <code>l/hr</code>, <code>1/hr</code>, <code>l/min</code>, <code>vols</code>, <code>SRM</code>, <code>mg/l</code>, <code>g/ml</code>, <code>sg</code>, <code>IBU</code> and <code>%</code>. The other values (arrows, timings, liquors, minerals, solids, vessels, priming sugars) are objects of their fields with their <code>&quot;type&quot;</code>; a <a href="../../api/#BrewQuiver.Portion"><code>Portion</code></a> refers to its ingredient by name. New arrow types are written once registered; see <a href="../extending/#Extending-BrewQuiver">Extending BrewQuiver</a>.</p><p>A JSON Schema of the format is planned.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../library/">« Ingredient library</a><a class="docs-footer-nextpage" href="../extending/">Extending BrewQuiver »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Thursday 19 November 2026 02:04">Thursday 19 November 2026</span>. Using Julia version 1.13.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
