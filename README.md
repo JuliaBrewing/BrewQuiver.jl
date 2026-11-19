@@ -1,7 +1,6 @@
 # BrewQuiver
 
-[![Docs (dev)](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliabrewing.github.io/BrewQuiver.jl/dev/)
-[![CI](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaBrewing.github.io/BrewQuiver.jl/dev/) [![CI](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaBrewing/BrewQuiver.jl/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) ![GitHub repo size](https://img.shields.io/github/repo-size/JuliaBrewing/BrewQuiver.jl)
 
 The engine of the BrewQuiver brewing software, in pure Julia: the brewing process as a
 **quiver**, a directed acyclic multigraph whose **nodes are the contents of vessels** at the
