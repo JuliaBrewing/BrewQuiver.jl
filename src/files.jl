@@ -271,6 +271,11 @@ function BJ.readjson(::Type{Quiver}, io::IO)
     return q
 end
 
+"""
+    write_beerjson(args...; kwargs...)
+
+Deprecated: use [`writejson`](@ref).
+"""
 function write_beerjson(args...; kwargs...)
     Base.depwarn("`write_beerjson` is deprecated, use `writejson`", :write_beerjson)
     return BJ.writejson(args...; kwargs...)
