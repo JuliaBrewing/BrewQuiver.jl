@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="referrer" content="no-referrer"/><title>A parti-gyle · BrewQuiver.jl</title><meta name="title" content="A parti-gyle · BrewQuiver.jl"/><meta property="og:title" content="A parti-gyle · BrewQuiver.jl"/><meta property="twitter:title" content="A parti-gyle · BrewQuiver.jl"/><meta name="description" content="Documentation for BrewQuiver.jl."/><meta property="og:description" content="Documentation for BrewQuiver.jl."/><meta property="twitter:description" content="Documentation for BrewQuiver.jl."/><meta property="og:url" content="https://juliabrewing.github.io/BrewQuiver.jl/tutorials/partigyle/"/><meta property="twitter:url" content="https://juliabrewing.github.io/BrewQuiver.jl/tutorials/partigyle/"/><link rel="canonical" href="https://juliabrewing.github.io/BrewQuiver.jl/tutorials/partigyle/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">BrewQuiver.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../concepts/">Concepts</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../single_batch/">A single batch</a></li><li class="is-active"><a class="tocitem" href>A parti-gyle</a><ul class="internal"><li><a class="tocitem" href="#Ingredients-and-vessels"><span>Ingredients and vessels</span></a></li><li><a class="tocitem" href="#Two-mashes,-three-runnings-each"><span>Two mashes, three runnings each</span></a></li><li><a class="tocitem" href="#Boils,-fermentations-and-racking"><span>Boils, fermentations and racking</span></a></li><li><a class="tocitem" href="#Blending"><span>Blending</span></a></li><li><a class="tocitem" href="#The-beers"><span>The beers</span></a></li><li><a class="tocitem" href="#A-change-upstream"><span>A change upstream</span></a></li><li><a class="tocitem" href="#Which-lots-made-the-ESB"><span>Which lots made the ESB</span></a></li><li><a class="tocitem" href="#Blending-to-a-target"><span>Blending to a target</span></a></li><li><a class="tocitem" href="#As-BeerJSON-recipes"><span>As BeerJSON recipes</span></a></li></ul></li><li><a class="tocitem" href="../beerjson/">A BeerJSON recipe</a></li></ul></li><li><span class="tocitem">Guide</span><ul><li><a class="tocitem" href="../../guide/equipment/">Equipment</a></li><li><a class="tocitem" href="../../guide/techniques/">Mashes, decoctions, stands and dry hops</a></li><li><a class="tocitem" href="../../guide/water/">Water chemistry</a></li><li><a class="tocitem" href="../../guide/timeline/">Timeline</a></li><li><a class="tocitem" href="../../guide/solving/">Targets and solving</a></li><li><a class="tocitem" href="../../guide/provenance/">Provenance and export</a></li><li><a class="tocitem" href="../../guide/library/">Ingredient library</a></li><li><a class="tocitem" href="../../guide/files/">Files of quivers</a></li><li><a class="tocitem" href="../../guide/extending/">Extending BrewQuiver</a></li></ul></li><li><a class="tocitem" href="../../api/">API reference</a></li><li><a class="tocitem" href="../../references/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>A parti-gyle</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>A parti-gyle</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaBrewing/BrewQuiver.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/JuliaBrewing/BrewQuiver.jl/blob/main/docs/src/tutorials/partigyle.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="A-parti-gyle"><a class="docs-heading-anchor" href="#A-parti-gyle">A parti-gyle</a><a id="A-parti-gyle-1"></a><a class="docs-heading-anchor-permalink" href="#A-parti-gyle" title="Permalink"></a></h1><p>In a <strong>parti-gyle</strong>, the successive runnings of the same mash make worts of decreasing strength, which are boiled, fermented and often blended into several beers. It is a quiver that no linear recipe can describe: streams split at every drain and merge at every copper and every blend.</p><p>This tutorial follows the joint production of Fuller&#39;s Barley Wine, ESB, Pale Ale and Bitter (figure 1 of the BrewQuiver notes): two mashes are drained three times each, the i-th runnings of both go to the i-th copper, and the three fermented beers are racked and blended into four, aiming at the strengths of Golden Pride (OG about 1.088), ESB (1.059), London Pride (1.047) and Chiswick Bitter (1.035). <em>The amounts are illustrative, not Fuller&#39;s actual recipes.</em></p><h2 id="Ingredients-and-vessels"><a class="docs-heading-anchor" href="#Ingredients-and-vessels">Ingredients and vessels</a><a id="Ingredients-and-vessels-1"></a><a class="docs-heading-anchor-permalink" href="#Ingredients-and-vessels" title="Permalink"></a></h2><pre><code class="language-julia hljs">using Unitful, UnitfulBrewing, BrewingFormulas, BrewQuiver
+using BeerJSON: quantity
+
+pale     = Fermentable(&quot;Pale ale malt&quot;; yield = 80u&quot;percent&quot;, color = 3u&quot;°L&quot;)
+crystal  = Fermentable(&quot;Crystal 60&quot;; yield = 74u&quot;percent&quot;, color = 60u&quot;°L&quot;)
+invert   = Fermentable(&quot;Invert sugar&quot;; kind = :sugar, yield = 100u&quot;percent&quot;, color = 1u&quot;SRM&quot;,
+                       moisture = 0)
+goldings = Hop(&quot;East Kent Goldings&quot;; alpha = 5u&quot;percent&quot;)
+ale      = Culture(&quot;English ale&quot;; attenuation = 72u&quot;percent&quot;)
+
+q = Quiver()
+add!(q, :goldings, goldings =&gt; 1.5u&quot;kg&quot;)
+add!(q, :invert, invert =&gt; 4u&quot;kg&quot;)
+
+# three coppers, three fermenting vessels and three racking tanks
+for i in 1:3
+    add!(q, Symbol(:yeast, i), ale =&gt; 1)
+    add!(q, Symbol(:kettle, i), Symbol(:wort, i), Symbol(:chilled, i); vessel = Symbol(:copper, i))
+    add!(q, Symbol(:fermentor, i), Symbol(:beer, i); vessel = Symbol(:fv, i))
+    add!(q, Symbol(:bright, i); vessel = Symbol(:tank, i))
+end</code></pre><h2 id="Two-mashes,-three-runnings-each"><a class="docs-heading-anchor" href="#Two-mashes,-three-runnings-each">Two mashes, three runnings each</a><a id="Two-mashes,-three-runnings-each-1"></a><a class="docs-heading-anchor-permalink" href="#Two-mashes,-three-runnings-each" title="Permalink"></a></h2><p>Each mash is drained three times: the first runnings from the mash itself, the second and third after sparging the grain bed. The i-th runnings go to the i-th copper, so each copper gets the runnings of both mashes.</p><pre><code class="language-julia hljs">for (m, grist) in enumerate(([pale =&gt; 70u&quot;kg&quot;, crystal =&gt; 4u&quot;kg&quot;],
+                             [pale =&gt; 60u&quot;kg&quot;, crystal =&gt; 2u&quot;kg&quot;]))
+    mash = Symbol(:mash, m)
+    beds = [Symbol(:bed, m, :_, i) for i in 1:3]
+    lots = [Symbol(:grist, m, :_, j) for j in eachindex(grist)]
+    foreach((l, g) -&gt; add!(q, l, g), lots, grist)
+    add!(q, Symbol(:strike, m), water(190u&quot;L&quot;; temperature = 75u&quot;°C&quot;))
+    add!(q, mash, beds...; vessel = Symbol(:mashtun, m))
+    connect!(q, [Symbol(:strike, m); lots] =&gt; mash)
+    connect!(q, mash =&gt; beds[1], MashRest(temperature = 66u&quot;°C&quot;, time = 60u&quot;minute&quot;))
+    for (i, v) in enumerate((nothing, 60u&quot;L&quot;, 40u&quot;L&quot;))
+        if v !== nothing                                     # sparge the grain bed
+            add!(q, Symbol(:sparge, m, :_, i), water(v; temperature = 80u&quot;°C&quot;))
+            connect!(q, beds[i - 1] =&gt; beds[i])               # the grain and what it holds
+            connect!(q, Symbol(:sparge, m, :_, i) =&gt; beds[i])
+        end
+        connect!(q, beds[i] =&gt; Symbol(:kettle, i), Drain(absorption = 1.0u&quot;L/kg&quot;))
+    end
+end</code></pre><h2 id="Boils,-fermentations-and-racking"><a class="docs-heading-anchor" href="#Boils,-fermentations-and-racking">Boils, fermentations and racking</a><a id="Boils,-fermentations-and-racking-1"></a><a class="docs-heading-anchor-permalink" href="#Boils,-fermentations-and-racking" title="Permalink"></a></h2><p>The strongest wort gets the invert sugar and most of the hops:</p><pre><code class="language-julia hljs">for (i, hops) in enumerate((1100u&quot;g&quot;, 270u&quot;g&quot;, 130u&quot;g&quot;))
+    kettle, wort, chilled, fv, beer, bright =
+        (Symbol(x, i) for x in (:kettle, :wort, :chilled, :fermentor, :beer, :bright))
+    connect!(q, :goldings =&gt; kettle, Transfer(hops; remaining = 90u&quot;minute&quot;))
+    i == 1 &amp;&amp; connect!(q, :invert =&gt; kettle)
+    connect!(q, kettle =&gt; wort, Boil(time = 90u&quot;minute&quot;, evaporation = 8u&quot;L/hr&quot;))
+    connect!(q, wort =&gt; chilled, Chill(temperature = 18u&quot;°C&quot;))
+    connect!(q, chilled =&gt; fv, Drain(retain = 2u&quot;L&quot;))
+    connect!(q, Symbol(:yeast, i) =&gt; fv)
+    connect!(q, fv =&gt; beer, Ferment(temperature = 19u&quot;°C&quot;, time = 7u&quot;d&quot;))
+    connect!(q, beer =&gt; bright, Drain(retain = 2u&quot;L&quot;))
+end</code></pre><h2 id="Blending"><a class="docs-heading-anchor" href="#Blending">Blending</a><a id="Blending-1"></a><a class="docs-heading-anchor-permalink" href="#Blending" title="Permalink"></a></h2><p>Four beers from three: the blends are just nodes where transfers merge. A <code>Transfer</code> of a percentage takes that fraction; a plain <code>Transfer()</code> takes the rest.</p><pre><code class="language-julia hljs">add!(q, :barley_wine, :esb, :pale_ale, :bitter)
+connect!(q, :bright1 =&gt; :esb, Transfer(6u&quot;percent&quot;))
+connect!(q, :bright1 =&gt; :barley_wine)
+connect!(q, :bright2 =&gt; :esb, Transfer(60u&quot;percent&quot;))
+connect!(q, :bright2 =&gt; :pale_ale)
+connect!(q, :bright3 =&gt; :pale_ale, Transfer(16u&quot;percent&quot;))
+connect!(q, :bright3 =&gt; :bitter)</code></pre><h2 id="The-beers"><a class="docs-heading-anchor" href="#The-beers">The beers</a><a id="The-beers-1"></a><a class="docs-heading-anchor-permalink" href="#The-beers" title="Permalink"></a></h2><pre><code class="language-julia hljs">res = brew(q)
+beers = (:barley_wine, :esb, :pale_ale, :bitter)
+for b in beers
+    println(rpad(b, 12), round(u&quot;L&quot;, volume(res[b])), &quot;  OG &quot;, round(u&quot;sg&quot;, original_gravity(res[b]); digits = 3),
+            &quot;  &quot;, round(u&quot;percent&quot;, abv(res[b]); digits = 1), &quot; ABV  &quot;, round(u&quot;IBU&quot;, ibu(res[b])))
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">barley_wine 277.0 L  OG 1.093 sg  9.2 % ABV  35.0 IBU
+esb         80.0 L  OG 1.06 sg  5.8 % ABV  35.0 IBU
+pale_ale    52.0 L  OG 1.047 sg  4.6 % ABV  34.0 IBU
+bitter      54.0 L  OG 1.034 sg  3.2 % ABV  31.0 IBU</code></pre><p>The stages each vessel goes through:</p><pre><code class="language-julia hljs">sort!(collect(vessels(q)))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">11-element Vector{Pair{Symbol, Vector{Symbol}}}:
+  :copper1 =&gt; [:kettle1, :wort1, :chilled1]
+  :copper2 =&gt; [:kettle2, :wort2, :chilled2]
+  :copper3 =&gt; [:kettle3, :wort3, :chilled3]
+      :fv1 =&gt; [:fermentor1, :beer1]
+      :fv2 =&gt; [:fermentor2, :beer2]
+      :fv3 =&gt; [:fermentor3, :beer3]
+ :mashtun1 =&gt; [:mash1, :bed1_1, :bed1_2, :bed1_3]
+ :mashtun2 =&gt; [:mash2, :bed2_1, :bed2_2, :bed2_3]
+    :tank1 =&gt; [:bright1]
+    :tank2 =&gt; [:bright2]
+    :tank3 =&gt; [:bright3]</code></pre><h2 id="A-change-upstream"><a class="docs-heading-anchor" href="#A-change-upstream">A change upstream</a><a id="A-change-upstream-1"></a><a class="docs-heading-anchor-permalink" href="#A-change-upstream" title="Permalink"></a></h2><p>A more attenuative fermentation of the second gyle changes the ESB and the Pale Ale, which contain it, but not the Barley Wine or the Bitter. <a href="../../api/#BrewQuiver.rebrew!"><code>rebrew!</code></a> recomputes only the nodes downstream:</p><pre><code class="language-julia hljs">q[:fermentor2 =&gt; :beer2] = Ferment(temperature = 19u&quot;°C&quot;, time = 7u&quot;d&quot;, attenuation = 80u&quot;percent&quot;)
+rebrew!(res, q, :fermentor2)
+for b in beers
+    println(rpad(b, 12), round(u&quot;percent&quot;, abv(res[b]); digits = 2), &quot; ABV&quot;)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">barley_wine 9.23 % ABV
+esb         6.25 % ABV
+pale_ale    4.97 % ABV
+bitter      3.23 % ABV</code></pre><h2 id="Which-lots-made-the-ESB"><a class="docs-heading-anchor" href="#Which-lots-made-the-ESB">Which lots made the ESB</a><a id="Which-lots-made-the-ESB-1"></a><a class="docs-heading-anchor-permalink" href="#Which-lots-made-the-ESB" title="Permalink"></a></h2><p><a href="../../api/#BrewQuiver.shares"><code>shares</code></a> follows the liquor back to the lots: the fraction of each lot used for a product. The shares of each lot among the four beers add up to what was used of it.</p><pre><code class="language-julia hljs">sort!([l =&gt; round(s; digits = 3) for (l, s) in shares(res, q, :esb)]; by = first)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">12-element Vector{Pair{Symbol, Float64}}:
+  :goldings =&gt; 0.152
+  :grist1_1 =&gt; 0.128
+  :grist1_2 =&gt; 0.128
+  :grist2_1 =&gt; 0.126
+  :grist2_2 =&gt; 0.126
+    :invert =&gt; 0.06
+ :sparge1_2 =&gt; 0.269
+ :sparge2_2 =&gt; 0.295
+   :strike1 =&gt; 0.128
+   :strike2 =&gt; 0.126
+    :yeast1 =&gt; 0.06
+    :yeast2 =&gt; 0.6</code></pre><h2 id="Blending-to-a-target"><a class="docs-heading-anchor" href="#Blending-to-a-target">Blending to a target</a><a id="Blending-to-a-target-1"></a><a class="docs-heading-anchor-permalink" href="#Blending-to-a-target" title="Permalink"></a></h2><p>The blend fractions can be solved for targets, e.g. the original gravities of the ESB and the Pale Ale (see <a href="../../guide/solving/">Targets and solving</a>):</p><pre><code class="language-julia hljs">sol = solve!(q, :esb =&gt; original_gravity =&gt; 1.059u&quot;sg&quot;, :pale_ale =&gt; original_gravity =&gt; 1.047u&quot;sg&quot;;
+             vary = [Setting(:bright2 =&gt; :esb, :amount), Setting(:bright3 =&gt; :pale_ale, :amount)])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Solution in 3 iterations
+  :bright2 → :esb amount: 0.6663813559104544
+  :bright3 → :pale_ale amount: 0.13722467563691831
+  original_gravity(:esb) = 1.0590000000130813 sg (goal 1.059 sg)
+  original_gravity(:pale_ale) = 1.0469999999827806 sg (goal 1.047 sg)</code></pre><h2 id="As-BeerJSON-recipes"><a class="docs-heading-anchor" href="#As-BeerJSON-recipes">As BeerJSON recipes</a><a id="As-BeerJSON-recipes-1"></a><a class="docs-heading-anchor-permalink" href="#As-BeerJSON-recipes" title="Permalink"></a></h2><p>BeerJSON recipes are linear, so the quiver exports as one recipe per beer, each with its shares of the lots (see <a href="../../guide/provenance/#Provenance-and-export">Provenance and export</a>):</p><pre><code class="language-julia hljs">[r.name =&gt; quantity(r.batch_size) for r in recipes(brew(q), q; products = collect(beers))]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">4-element Vector{Pair{String, Quantity{Float64, 𝐋^3, Unitful.FreeUnits{(L,), 𝐋^3, nothing}}}}:
+ &quot;barley_wine&quot; =&gt; 281.1093579699416 L
+         &quot;esb&quot; =&gt; 88.55150589587589 L
+    &quot;pale_ale&quot; =&gt; 44.40451455434212 L
+      &quot;bitter&quot; =&gt; 56.931614590226395 L</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../single_batch/">« A single batch</a><a class="docs-footer-nextpage" href="../beerjson/">A BeerJSON recipe »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Friday 20 November 2026 22:51">Friday 20 November 2026</span>. Using Julia version 1.13.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
