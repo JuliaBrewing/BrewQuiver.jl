@@ -76,6 +76,13 @@ _inventory(x::Union{BJ.FermentableInventoryType, BJ.HopInventoryType}) = _q(x.am
 _inventory(x::BJ.CultureInventoryType) =
     something(_q(x.dry), _q(x.liquid), _q(x.slant), _q(x.culture), Some(nothing))
 
+# the count of a culture in stock, an extension of BeerJSON (see `writejson(path, lib)`)
+_count(x) = nothing
+function _count(x::BJ.CultureInformation)
+    n = get(x._extra, "inventory_count", nothing)
+    return n isa Real ? float(n) : nothing
+end
+
 function _load!(lib, records, make)
     for x in something(records, [])
         i = try
@@ -85,7 +92,7 @@ function _load!(lib, records, make)
             @warn "$(repr(x.name)) is left out of the library: $(e.msg)"
             continue
         end
-        push!(lib, i; stock = _inventory(x.inventory))
+        push!(lib, i; stock = something(_inventory(x.inventory), Some(_count(x))))
     end
     return lib
 end
@@ -202,16 +209,19 @@ end
 function _record(c::Culture, s)
     a = BJ.PercentType{_BJI, _BJT}(100c.attenuation * u"percent")
     inv = s isa KgQ ? (dry = _bj_inventory(s),) : s isa LQ ? (liquid = _bj_inventory(s),) : nothing
-    return BJ.CultureInformation{_BJI, _BJT}(name = c.name, type = string(c.kind),
+    r = BJ.CultureInformation{_BJI, _BJT}(name = c.name, type = string(c.kind),
         form = string(c.form), attenuation_range = (minimum = a, maximum = a), inventory = inv)
+    s isa Real && (r._extra["inventory_count"] = s)       # packs, vials: not in BeerJSON
+    return r
 end
 
 """
     writejson(path, lib::Library)
 
 Writes the ingredients of `lib` to a BeerJSON document at `path`, as fermentables, hop
-varieties and cultures, with their stock as inventory (counts of cultures are not written:
-BeerJSON's inventory of cultures holds volumes and masses).
+varieties and cultures, with their stock as inventory. Counts of cultures (packs, vials)
+are written under `"inventory_count"`, an extension, since BeerJSON's inventory of cultures
+holds masses and volumes; other BeerJSON readers ignore it.
 """
 function BJ.writejson(path::AbstractString, lib::Library)
     records(T) = [_record(lib[n], lib.stock[n]) for n in keys(lib) if lib[n] isa T]

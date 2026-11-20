@@ -190,7 +190,8 @@ grain absorption of a mash tun, the evaporation rate of a kettle and the drain r
 the arrows leaving them take from it what they do not give themselves: a plain `Drain()`
 leaves the grain absorption and the dead space behind and takes the time of the drain
 rate, and a `Boil(time = 60u"minute")` evaporates at the rate of the kettle.
-`overfilled(res, q)` lists the stages whose contents (with the grain displaced in a mash)
+`unequip!(q, :kettle)` removes it, and `vessel!(q, label, vessel)` moves a node to another
+vessel (or to none, with `nothing`). `overfilled(res, q)` lists the stages whose contents (with the grain displaced in a mash)
 exceed the capacity of their vessel. The equipment of a BeerJSON document becomes the
 vessels of the quiver of a recipe.
 

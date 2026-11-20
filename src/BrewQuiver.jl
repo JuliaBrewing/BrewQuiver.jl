@@ -76,8 +76,8 @@ export AbstractArrow, AbstractTransformation, transform
 export Transfer, Drain, MashRest, Boil, Chill, Ferment, Prime, Carbonate, priming_mass
 
 # quiver
-export Quiver, Node, add!, connect!, disconnect!, remove!, rename!, nodes, arrows, vessel, vessels
-export Vessel, equip!, equipment, overfilled
+export Quiver, Node, add!, connect!, disconnect!, remove!, rename!, nodes, arrows, vessel, vessel!, vessels
+export Vessel, equip!, unequip!, equipment, overfilled
 export predecessors, successors, descendants, nodeview
 
 # brewing

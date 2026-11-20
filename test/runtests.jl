@@ -777,6 +777,43 @@ end
     @test timeline(res, q)[:fermentor] == t[:fermentor]
     q[:rested => :kettle] = Drain(duration = 5u"minute")            # what the arrow gives wins
     @test only(timeline(q)[:rested => :kettle]).stop == 65u"minute"
+
+    # moving a node to another vessel, and removing equipment
+    q = single_batch()
+    res, before = brew(q), nodes(q)
+    nodeview(q, :chilled)["position"] = [3, 1]
+    doc = sprint(io -> writejson(io, q))
+    @test vessel!(q, :chilled, :whirlpool) === q
+    @test vessel(q, :chilled) == :whirlpool && :chilled in vessels(q)[:whirlpool]
+    @test nodes(q) == before && nodeview(q, :chilled) == Dict("position" => [3, 1])
+    @test q[:chilled => :fermentor] == [Drain(retain = 1u"L")]
+    moved = BrewQuiver.JSON.parse(sprint(io -> writejson(io, q)))
+    @test moved["graph"]["nodes"]["chilled"]["metadata"]["vessel"] == "whirlpool"
+    moved["graph"]["nodes"]["chilled"]["metadata"]["vessel"] = "kettle"
+    @test moved == BrewQuiver.JSON.parse(doc)                       # only the vessel changed
+    rebrew!(res, q, :chilled)
+    @test all(res[n] ≈ brew(q)[n] for n in nodes(q))
+    q[:chilled => :fermentor] = Drain()                             # takes from the vessel
+    plain = brew(q)
+    equip!(q, :whirlpool, Vessel(dead_space = 2u"L"))
+    @test volume(leftover(brew(q), :chilled)) ≈ volume(leftover(plain, :chilled)) + 2u"L" rtol = 1e-6
+    vessel!(q, :chilled, nothing)
+    @test vessel(q, :chilled) === nothing && !haskey(vessels(q), :whirlpool)
+    @test all(brew(q)[n] ≈ plain[n] for n in nodes(q))
+    q[:chilled => :fermentor] = Drain(retain = 1u"L")
+    vessel!(q, :chilled, :kettle)
+    unequip!(q, :whirlpool)
+    @test sprint(io -> writejson(io, q)) == doc                     # back to the start
+    @test_throws ArgumentError vessel!(q, :nowhere, :kettle)
+
+    r0 = brew(q)
+    equip!(q, :mashtun, Vessel(absorption = 2u"L/kg"))              # the drains take it
+    @test volume(brew(q)[:kettle]) < volume(r0[:kettle])
+    @test haskey(BrewQuiver.JSON.parse(sprint(io -> writejson(io, q)))["graph"]["metadata"]["equipment"], "mashtun")
+    @test unequip!(q, :mashtun) === q && equipment(q, :mashtun) === nothing
+    @test all(brew(q)[n] ≈ r0[n] for n in nodes(q))
+    @test unequip!(q, :mashtun) === q                               # none: nothing happens
+    @test isempty(BrewQuiver.JSON.parse(sprint(io -> writejson(io, q)))["graph"]["metadata"]["equipment"])
 end
 
 @testset "Hop stands, decoctions and dry hops" begin
@@ -1054,7 +1091,17 @@ end
     @test readjson(Library, writejson(tempname() * ".json", lib))["Roast barley"].di_ph ≈ 4.6
     @test back["English ale"].attenuation ≈ ale.attenuation
     @test stock(back, "Pale ale malt") ≈ stock(lib, "Pale ale malt")
-    @test stock(back, "English ale") === nothing                  # (a count: not written)
+    @test stock(back, "English ale") == stock(lib, "English ale")         # a count, as an extension
+    @test stock(back, "East Kent Goldings") ≈ stock(lib, "East Kent Goldings")
+    counts = Library()
+    push!(counts, ale; stock = 2)
+    push!(counts, pale; stock = 3u"kg")
+    push!(counts, goldings; stock = 100u"g")
+    path = writejson(tempname() * ".json", counts)
+    again = readjson(Library, path)
+    @test stock(again, "English ale") == 2 && stock(again, "Pale ale malt") ≈ 3u"kg" &&
+          stock(again, "East Kent Goldings") ≈ 100u"g"
+    @test only(BeerJSON.readjson(BeerJSON.BeerJSONParser, path).beerjson.cultures).inventory === nothing
     @test occursin("in stock 1.0 kg", sprint(show, MIME"text/plain"(), back))
 
     # a recipe completed by the library: moisture, and attenuation where the recipe has none

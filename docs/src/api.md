@@ -100,6 +100,7 @@ Base.setindex!(::Quiver, ::AbstractArrow, ::Pair{Symbol, Symbol}, ::Integer)
 nodes
 arrows
 vessel
+vessel!
 vessels
 predecessors
 descendants
@@ -111,6 +112,7 @@ nodeview
 ```@docs
 Vessel
 equip!
+unequip!
 equipment
 overfilled
 ```
