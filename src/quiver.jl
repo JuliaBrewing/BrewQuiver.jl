@@ -53,6 +53,19 @@ The vessel of the node `label`, or `nothing`.
 vessel(q::Quiver, label::Symbol) = q[label].vessel
 
 """
+    vessel!(q::Quiver, label, vessel)
+
+Puts the node `label` in `vessel` (a `Symbol`), or in none (`nothing`), keeping its
+contents, view, arrows and place in the order. The arrows leaving it take what they do not
+give themselves from the equipment of its new vessel. Brew again afterwards.
+"""
+function vessel!(q::Quiver, label::Symbol, v::Union{Nothing, Symbol})
+    haskey(q, label) || throw(ArgumentError("there is no node labelled :$label"))
+    n = q[label]
+    return _set!(q, label, Node(n.initial, v, n.view))
+end
+
+"""
     equip!(q::Quiver, vessel::Symbol, equipment::Vessel)
 
 Attaches the `equipment` to the `vessel` of `q`: the arrows leaving the nodes in that
@@ -69,6 +82,15 @@ function equip!(q::Quiver, name::Symbol, v::Vessel)
     q.equipment[name] = v
     return q
 end
+
+"""
+    unequip!(q::Quiver, vessel::Symbol)
+
+Removes the equipment of `vessel` (see [`equip!`](@ref)): the arrows leaving its nodes go
+back to what they give themselves, or the defaults. Nothing happens if it has none. Brew
+again afterwards.
+"""
+unequip!(q::Quiver, name::Symbol) = (delete!(q.equipment, name); q)
 
 """
     equipment(q::Quiver, vessel::Symbol)
